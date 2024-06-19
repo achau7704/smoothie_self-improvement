@@ -30,7 +30,6 @@ from sklearn.neighbors import NearestNeighbors
 from tqdm.auto import tqdm
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
-from src.aggregation import Aggregator
 from src.console import console
 from src.constants import *
 from src.model import Smoothie

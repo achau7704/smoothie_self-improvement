@@ -32,7 +32,6 @@ from sklearn.neighbors import NearestNeighbors
 from tqdm.auto import tqdm
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
-from src.aggregation import Aggregator
 from src.console import console
 from src.constants import *
 from src.model import Smoothie
@@ -175,25 +174,10 @@ def main(args):
             smoothie.theta, (test_generation_embeddings.shape[0], 1)
         )
 
-    # Create aggregator
-    agg = Aggregator(
-        device=args.device,
-        model_name=args.model,
-        hf_cache_dir=args.hf_cache_dir,
-        method=SMOOTHIE,
-    )
-
     dataset_texts = []  # Decoded text
     for sample_idx in tqdm(range(len(test_prompts)), ncols=100):
-        if args.operation == "select":
-            max_prompt_idx = smoothie_dataset_weights[sample_idx].argmax()
-            text = individual_generations_test[sample_idx][max_prompt_idx]
-        else:
-            text = agg.aggregate(
-                prompts=sample_prompts,
-                max_tokens=data_config["max_new_tokens"],
-                weights=smoothie_dataset_weights[sample_idx],
-            )
+        max_prompt_idx = smoothie_dataset_weights[sample_idx].argmax()
+        text = individual_generations_test[sample_idx][max_prompt_idx]
 
         dataset_texts.append(text)
 
