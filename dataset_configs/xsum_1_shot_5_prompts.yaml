@@ -1,0 +1,12 @@
+dataset: xsum
+prompt: xsum_1_shot_5_prompts
+max_new_tokens: 30
+doc_key: document
+reference_key: summary
+stop_token: \n\n
+train_size: 250
+test_size: 1000
+metrics:
+  - rouge1
+  - rouge2
+  - rougeL

@@ -1,0 +1,11 @@
+dataset: cnn_dailymail
+prompt: cnn_dailymail_0_shot
+max_new_tokens: 75
+doc_key: article
+reference_key: highlights
+train_size: 5
+test_size: 5
+metrics:
+  - rouge1
+  - rouge2
+  - rougeL

@@ -1,0 +1,7 @@
+[
+    "Complete the following code. Only reply with the code. \n {prompt} \n Code:",
+    "Complete the code in a clean, concise, and correct manner. Only reply with the code. \n {prompt} \n Code:",
+    "Complete the code in the most efficient and shortest way possible. Only reply with the code. \n {prompt} \n Code:",
+    "Assume the role of a developer and complete the code in a clean, correct, and easy to understand manner. Only reply with the code. \n {prompt} \n Code:",
+    "Write code that compiles. Only reply with the code. \n {prompt} \n Code:"
+]

@@ -1,0 +1,9 @@
+dataset: definition_extraction
+prompt: definition_extraction_0_shot
+max_new_tokens: 20
+doc_key: text
+reference_key: answer
+train_size: 100
+test_size: 595
+metrics:
+  - definition_extraction_acc

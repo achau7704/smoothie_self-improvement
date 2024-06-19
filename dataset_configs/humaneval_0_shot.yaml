@@ -1,0 +1,5 @@
+dataset: openai_humaneval
+prompt: humaneval_0_shot_prompts
+max_new_tokens: 1200
+doc_key: prompt
+reference_key: canonical_solution

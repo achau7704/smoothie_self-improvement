@@ -1,0 +1,9 @@
+dataset: gsm8k
+prompt: gsm8k_1_shot_cot_simple
+doc_key: question
+reference_key: answer
+max_new_tokens: 200
+train_size: 250
+test_size: 1000
+metrics:
+  - gsm8k_acc

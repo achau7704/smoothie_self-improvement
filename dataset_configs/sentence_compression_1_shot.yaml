@@ -1,0 +1,6 @@
+dataset: sentence_compression
+prompt: sentence_compression_1_shot
+max_new_tokens: 20
+doc_key: sentence
+reference_key: summary
+stop_token: \n\n
