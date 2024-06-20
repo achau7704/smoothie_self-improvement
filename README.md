@@ -1,4 +1,67 @@
-# generative-ensembles
+# smoothie
+
+This is the codebase for Smoothie. It allows you to both use Smoothie, and reproduce the experiments in the paper. 
+
+We store all datasets, predictions, and results from the paper in a Hugging Face dataset. You can download the dataset from HuggingFace by running the following command:
+
+```bash
+> huggingface-cli login
+> git clone https://huggingface.co/datasets/hazyresearch/smoothie_data
+```
+
+## Reproducing the paper
+
+### Datasets
+`dataset_configs` contains the configuration files for the datasets used in the paper. 
+
+For single task datasets, each configuration file contains the following fields:
+
+```yaml 
+# Name of the dataset
+dataset: e2e_nlg
+# Name of the prompt template to use for the multi-prompt setting
+multi_prompt_template: e2e_nlg_1_shot
+# Name of the prompt template to use for the multi-model setting
+multi_model_prompt_template: e2e_nlg_1_shot
+# Maximum number of new tokens to generate
+max_new_tokens: 50
+# Preprocessing function to use
+preprocess: preprocess_e2e_nlg
+# Train and test sizes
+train_size: 250
+test_size: 1000
+# Metrics to compute for evaluation
+metrics:
+  - rouge1
+  - rouge2
+  - rougeL
+```
+
+For multi-task datasets, each configuration file contains the following fields:
+
+```yaml
+# Configuration for each task in the dataset
+tasks:
+  - squad.yaml # Configuration file for the first task
+  - trivia_qa.yaml # Configuration file for the second task
+  - definition_extraction.yaml # Configuration file for the third task
+```
+
+Train and test splits for datasets are saved to `$HF_DATASETS_DIR/datasets/` as `$config_filename_train.tsv` and `$config_filename_test.tsv`. Each tsv file contains the following columns:
+- `idx`: Unique identifier for the sample
+- `input_text`: Text input used when computing lookup embeddings.
+- `multi_model_prompt_template`: The prompt used for the multi-model setting.
+- `multi_prompt_template_{i}`: The prompt used for the i-th prompt in the multi-prompt setting.
+- `reference_text`: The reference text for the sample.
+
+To produce the train and test splits, run the following command:
+
+```bash
+> python -m src.make_dataset --config $config_filename
+```
+
+
+# OLD DOCUMENTATION
 
 This is the repository for the generative-ensembles project.
 
