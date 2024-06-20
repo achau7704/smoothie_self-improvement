@@ -5,7 +5,7 @@ This is the codebase for Smoothie. It allows you to both use Smoothie, and repro
 We store all datasets, predictions, and results from the paper in a Hugging Face dataset. You can download the dataset from HuggingFace by running the following command:
 
 ```bash
-> huggingface-cli login
+> huggingface-cli login --token $HUGGINGFACE_TOKEN --add-to-git-credential
 > git clone https://huggingface.co/datasets/hazyresearch/smoothie_data
 ```
 
