@@ -1,17 +1,7 @@
 """
 This script implements Smoothie. There are several configurations: 
-
-type
------
-Options: sample_dependent, sample_independent
-The type of Smoothie to use. sample_dependent uses a different set of weights for each sample, while sample_independent uses the same set of weights for all samples.
-
-operation
----------
-Options: select, merge
-The operation to perform. select selects the best voter using computed weights, while merge uses the weights to merge the outputs of all voters.
-
 """
+
 
 import warnings
 
@@ -25,8 +15,6 @@ import json
 from pathlib import Path
 
 import numpy as np
-import torch
-import yaml
 from sentence_transformers import SentenceTransformer
 from sklearn.neighbors import NearestNeighbors
 from tqdm.auto import tqdm
@@ -35,17 +23,26 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 from src.console import console
 from src.constants import *
 from src.model import Smoothie
+from src.multi_model.utils import load_predictions
 from src.utils import (check_results_file, clean_generation,
                        construct_predictions_dir_path,
                        embed_individual_generations, get_generation_output,
                        get_input_text, load_data_config, load_hf_dataset,
-                       load_hf_model, load_prompts, make_list_with_shape)
+                       load_hf_model, load_prompts, make_list_with_shape,
+                       construct_smoothie_predictions_path)
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--model", type=str, help="LLM to use")
-parser.add_argument("--device", default="cuda", type=str, help="Device to use")
 parser.add_argument(
-    "--data_config_path", type=str, help="Path to the data yaml config."
+    "--device", 
+    default="cuda", 
+    type=str, 
+    help="Device to use"
+)
+parser.add_argument(
+    "--data_config_path", 
+    type=str, 
+    help="Path to the data yaml config."
 )
 parser.add_argument(
     "--hf_cache_dir",
@@ -55,15 +52,13 @@ parser.add_argument(
 )
 parser.add_argument(
     "--results_dir",
-    default="generative_ensembles_data/results",
     type=str,
     help="Directory to save results to",
 )
 parser.add_argument(
-    "--prompts_dir", default="prompts", type=str, help="Directory to save prompts to"
-)
-parser.add_argument(
-    "--redo", action="store_true", help="Redo the generation if the file already exists"
+    "--redo", 
+    action="store_true", 
+    help="Redo the generation if the file already exists"
 )
 parser.add_argument(
     "--test",
@@ -77,112 +72,121 @@ parser.add_argument(
     help="The type of Smoothie to use. See file docstring for more information.",
 )
 parser.add_argument(
-    "--operation",
-    choices=["select", "merge"],
-    required=True,
-    help="The operation to perform. See file docstring for more information.",
+    "--use_full_text_embeddings",
+    action="store_true",
+    help="If set to true, Smoothie operates on embeddings of [input text, generation text]. Otherwise, Smoothie uses the embedding of the generation text only.",
+)
+parser.add_argument(
+    "--k", 
+    help="Nearest neighbors size", 
+    type=int
+)
+parser.add_argument(
+    "--n_generations",
+    default=1,
+    type=int,
+    help="If not equal to 1, we replace k-nearest neighbors smoothing with computation over the n_generations per sample",
+)
+parser.add_argument(
+    "--model_group",
+    help="The models to use for predictions if we are doing multi-model",
 )
 
-
-def get_top_k_indices(arr, k):
-    """
-    Returns the indices of the top k elements in an array.
-    """
-    return np.argpartition(arr, -k)[-k:]
-
-
 def main(args):
-    # Load data config, prompts, and create output directory
     data_config = load_data_config(args)
-    _, test_prompts = load_prompts(data_config, args)
-    console.log(
-        f"Loaded prompts for {data_config['dataset']}. Test: {test_prompts.shape}"
-    )
-    predictions_dir = construct_predictions_dir_path(data_config, args)
-
-    # Construct the output file based on the parameters
-    if args.operation == "select":
-        output_fpath = predictions_dir / f"smoothie_select_{args.type}_test.json"
-    else:
-        output_fpath = (
-            predictions_dir / f"smoothie_merge_{args.type}_{args.max_k}_test.json"
-        )
-
-    # Check if the results file already exists
+    output_fpath = construct_smoothie_predictions_path(data_config, args.model, args)
+    predictions_dir = output_fpath.parent
     if check_results_file(output_fpath) and not args.redo:
         console.log(f"Results file already exists at {output_fpath}. Skipping.")
         return
 
-    console.log(f"Saving results to {output_fpath}")
-
-    # Create embedding model
-    model_name = "all-mpnet-base-v2"
-    model = SentenceTransformer(model_name)
-    console.log(f"Loaded embedding model: {model_name}")
-
-    # Load test dataset and compute embeddings
-    test_df = load_hf_dataset(
+    test_inputs = get_input_text(load_hf_dataset(
         dataset_name=data_config["dataset"],
         is_train=False,
         n_samples=data_config["test_size"],
         hf_cache_dir=args.hf_cache_dir,
-    )
-    test_dataset_embeddings = model.encode(get_input_text(test_df, data_config))
+        doc_key=data_config["doc_key"]
+    ), data_config)
 
-    # Load individual prompt generations from test split
-    with open(predictions_dir / "individual_test.json", "r") as f:
-        individual_generations_test = json.load(f)
-    individual_generations_test = np.array(individual_generations_test["generations"])
 
-    # Compute test embeddings
-    test_generation_embeddings = embed_individual_generations(
-        individual_generations=individual_generations_test,
-        data_config=data_config,
-        model=model,
-    )
+    test_generations_for_smoothie = load_predictions(predictions_dir, "test", args, for_selection=False)
+    test_generations_for_selection = load_predictions(predictions_dir, "test", args)
 
-    # Useful constants
-    n_samples = len(test_dataset_embeddings)
-    n_voters = test_generation_embeddings.shape[1]
-    embed_dim = test_generation_embeddings.shape[2]
 
-    # Learn smoothie weights
-    if args.type == "sample_dependent":
-        # Fit KNN
-        nbrs = NearestNeighbors(n_neighbors=20, algorithm="auto")
-        nbrs.fit(test_dataset_embeddings)
 
-        # Find the k nearest neighbors
-        distances, test_indices = nbrs.kneighbors(test_dataset_embeddings)
+    model_name = "all-mpnet-base-v2"
+    model = SentenceTransformer(model_name)
+    console.log(f"Loaded embedding model: {model_name}")
 
-        smoothie_dataset_weights = []
-        for sample_idx in tqdm(range(len(test_prompts)), ncols=100):
-            nn_embeds = test_generation_embeddings[test_indices[sample_idx]]
-            smoothie = Smoothie(n_voters=n_voters, dim=embed_dim)
-            smoothie.fit(nn_embeds)
-            smoothie_dataset_weights.append(smoothie.theta)
-        smoothie_dataset_weights = np.array(smoothie_dataset_weights)
+
+    test_input_embeddings = model.encode(test_inputs)
+
+    if args.use_full_text_embeddings: 
+        # use full text embeddings as input to Smoothie.
+        # convert test_generations_for_smoothie to have test_input prepended.
+        smoothie_text = []
+        assert len(test_inputs) == len(test_generations_for_smoothie)
+        for i, gens_per_sample in enumerate(test_generations_for_smoothie):
+            smoothie_text.append(test_inputs[i] + " " + gen_per_model_per_sample for gen_per_model_per_sample in gens_per_sample)
+        smoothie_text = np.array(smoothie_text)
+        assert smoothie_text.shape == test_generations_for_smoothie.shape
     else:
-        # Learn a single set of weights for all samples
-        smoothie = Smoothie(
-            n_voters=test_generation_embeddings.shape[1],
-            dim=test_generation_embeddings.shape[2],
-        )
-        smoothie.fit(test_generation_embeddings)
-        console.log(f"Smoothie weights: {smoothie.theta}")
-        smoothie_dataset_weights = np.tile(
-            smoothie.theta, (test_generation_embeddings.shape[0], 1)
-        )
+        smoothie_text = test_generations_for_smoothie
 
-    dataset_texts = []  # Decoded text
-    for sample_idx in tqdm(range(len(test_prompts)), ncols=100):
-        max_prompt_idx = smoothie_dataset_weights[sample_idx].argmax()
-        text = individual_generations_test[sample_idx][max_prompt_idx]
 
+    smoothie_embeddings = embed_individual_generations(
+        individual_generations=smoothie_text,
+        model_name=model_name
+    )
+
+    n_samples = int(len(smoothie_embeddings) / args.n_generations)
+    n_voters = smoothie_embeddings.shape[1]
+    embed_dim = smoothie_embeddings.shape[2]
+
+    
+    if args.type == "sample_dependent":
+        if args.n_generations == 1:
+            # use KNN
+            nbrs = NearestNeighbors(n_neighbors=args.k, algorithm="auto")
+            nbrs.fit(test_input_embeddings) # not the same as smoothie_embeddings! only kernel-smooth based on x similarity
+
+            _, test_indices = nbrs.kneighbors(test_input_embeddings)
+            # test_indices = test_indices[:, 1:] # TODO: double check this
+
+            smoothie_dataset_weights = []
+            for sample_idx in range(n_samples):
+                if args.k == 1:
+                    embs_per_sample = smoothie_embeddings[sample_idx].reshape((1, n_voters, -1))
+                else:
+                    embs_per_sample = smoothie_embeddings[test_indices[sample_idx]]
+                smoothie = Smoothie(n_voters=n_voters, dim=embed_dim)
+                smoothie.fit(embs_per_sample)
+                smoothie_dataset_weights.append(smoothie.theta)
+            smoothie_dataset_weights = np.array(smoothie_dataset_weights)
+        else:
+            # use n_generations per sample to do estimation
+            smoothie_dataset_weights = []
+            for sample_idx in range(n_samples):
+                embs_per_sample = smoothie_embeddings[sample_idx * args.n_generations : (sample_idx+1)*args.n_generations]
+                smoothie = Smoothie(n_voters=n_voters, dim=embed_dim)
+                smoothie.fit(embs_per_sample)
+                smoothie_dataset_weights.append(smoothie.theta)
+            smoothie_dataset_weights = np.array(smoothie_dataset_weights)
+    else:
+        # learn a single set of weights for all samples
+        smoothie = Smoothie(n_voters=n_voters, dim=embed_dim)
+        smoothie.fit(smoothie_embeddings)
+        smoothie_dataset_weights = np.tile(smoothie.theta, (n_samples, 1))
+
+
+    dataset_texts = []
+    for sample_idx in range(n_samples):
+        max_idx = smoothie_dataset_weights[sample_idx].argmax() 
+        text = test_generations_for_selection[sample_idx][max_idx]
         dataset_texts.append(text)
 
         if args.test and sample_idx == 1:
-            break
+            break 
 
     results = {
         "generations": dataset_texts,

@@ -17,6 +17,7 @@ from src.utils import (construct_predictions_dir_path, load_data_config,
                        load_hf_dataset)
 
 parser = argparse.ArgumentParser()
+parser.add_argument("--model", type=str, help="LLM to use")
 parser.add_argument(
     "--data_config_path",
     type=str,
@@ -30,7 +31,6 @@ parser.add_argument(
 )
 parser.add_argument(
     "--results_dir",
-    default="generative_ensembles_data/multi_model_results",
     type=str,
     help="Results directory",
 )
@@ -39,13 +39,17 @@ parser.add_argument(
     action="store_true",
     help="Redo evaluation even if results already exist. Otherwise, we only evaluate methods/metrics which aren't already evaluated.",
 )
+parser.add_argument(
+    "--model_group",
+    help="The models to use for predictions if we are doing multi-model",
+)
 
 
 def main(args):
     # Load data config, prompts, and create output directory
     data_config = load_data_config(args)
     predictions_dir = construct_predictions_dir_path(
-        data_config, args, multi_model=True
+        data_config, args, args.model
     )
 
     # Load scores if they already exist
@@ -57,14 +61,14 @@ def main(args):
         is_train=False,
         n_samples=data_config["test_size"],
         hf_cache_dir=args.hf_cache_dir,
+        doc_key=data_config["doc_key"]
     )
     references = get_references(dataset, data_config)
-    print(dataset)
 
     predictions_files = list(predictions_dir.glob("*_test.json"))
     for predictions_fpath in predictions_files:
         console.log(predictions_fpath)
-        if "perplexity" in str(predictions_fpath) or ("gens" in str(predictions_fpath) and "smoothie" not in str(predictions_fpath)):
+        if "gens" in str(predictions_fpath) and "smoothie" not in str(predictions_fpath): 
             continue
         for metric in data_config["metrics"]:
             scorer.score_method(
@@ -72,18 +76,6 @@ def main(args):
                 metric=metric,
                 references=references,
             )
-
-    # Compute train individual scores
-    # train_dataset = load_hf_dataset(
-    #    dataset_name=data_config["dataset"],
-    #    is_train=True,
-    #    n_samples=data_config["train_size"],
-    #    hf_cache_dir=args.hf_cache_dir,
-    # )
-    # train_references = get_references(train_dataset, data_config)
-    # predictions_file = predictions_dir / "individual_train.json"
-    # for metric in data_config["metrics"]:
-    #    scorer.score_train(predictions_fpath=predictions_file, metric=metric, references=train_references)
 
     console.log(json.dumps(scorer.summary_scores, indent=4))
 

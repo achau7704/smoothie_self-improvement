@@ -8,7 +8,7 @@ MODEL_GROUPS = {
 }
 
 
-def load_predictions(predictions_dir, split, args, final=True):
+def load_predictions(predictions_dir, split, args, for_selection=True):
     """
     Load predictions from a given split.
 
@@ -19,16 +19,28 @@ def load_predictions(predictions_dir, split, args, final=True):
     Returns:
     - list: The predictions for the split.
     """
-    models = MODEL_GROUPS[args.model_group]
+    models = [args.model] if args.model_group is None else MODEL_GROUPS[args.model_group]
+
     predictions = []
     for model in models:
-        if args.n_generations > 1 and not final:
-            fpath = predictions_dir / f"{model}_{args.n_generations}_gens_{split}.json"
+
+        if args.model_group is None:
+            file_name = "individual_"
         else:
-            fpath = predictions_dir / f"{model}_{split}.json"
+            file_name = f"{model}_"
+            
+        if args.n_generations > 1 and not for_selection:
+            file_name += f"{args.n_generations}_gens_"
+
+        fpath = predictions_dir / f"{file_name}{split}.json"
         with open(fpath, "r") as f:
             predictions.append(json.load(f)["generations"])
 
-    predictions = np.array(predictions).T
-    assert predictions.shape[1] == len(models)
+
+    predictions = np.array(predictions)
+    if len(predictions.shape) == 3:
+        predictions = predictions.reshape((predictions.shape[1], predictions.shape[2]))
+    else:
+        predictions = predictions.T 
+    # shape should be (n_samples * n_generations, n_prompts or n_models)
     return predictions

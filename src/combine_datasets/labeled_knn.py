@@ -112,6 +112,7 @@ def main(args):
             is_train=False,
             n_samples=data_config["test_size"],
             hf_cache_dir=args.hf_cache_dir,
+            doc_key=data_config["doc_key"]
         )
         test_datasets.append(test_df)
         test_texts.extend(get_input_text(test_df, data_config))
@@ -141,6 +142,7 @@ def main(args):
             is_train=True,
             n_samples=data_config["train_size"],
             hf_cache_dir=args.hf_cache_dir,
+            doc_key=data_config["doc_key"]
         )
         references = get_references(train_df, data_config)
         train_references.extend(references)

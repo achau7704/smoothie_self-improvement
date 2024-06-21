@@ -22,13 +22,15 @@ from tqdm.auto import tqdm
 
 from src.console import console
 from src.constants import HF_MODELS
+from src.multi_model.utils import load_predictions
 from src.utils import (check_results_file, construct_predictions_dir_path,
                        get_generation_output, load_data_config, load_hf_model,
-                       load_prompts, make_list_with_shape)
+                       load_prompts, make_list_with_shape,
+                       construct_pick_random_predictions_path)
 
 parser = argparse.ArgumentParser()
+
 parser.add_argument("--model", type=str, help="LLM to use")
-parser.add_argument("--device", default="cuda", type=str, help="Device to use")
 parser.add_argument(
     "--data_config_path",
     type=str,
@@ -42,7 +44,6 @@ parser.add_argument(
 )
 parser.add_argument(
     "--results_dir",
-    default="generative_ensembles_data/benchmark_results",
     type=str,
     help="Directory to save results to",
 )
@@ -54,34 +55,29 @@ parser.add_argument(
     action="store_true",
     help="Redo the generation if the results file already exists",
 )
-
+parser.add_argument(
+    "--model_group",
+    help="The models to use for predictions",
+)
 
 def main(args):
-    # Load data config, prompts, and create output directory
     data_config = load_data_config(args)
-    predictions_dir = construct_predictions_dir_path(data_config, args)
-
-    # Check if the results file already exists
-    output_fpath = predictions_dir / "pick_random_test.json"
+    output_fpath = construct_pick_random_predictions_path(data_config, args.model, args)
+    predictions_dir = output_fpath.parent
     if check_results_file(output_fpath) and not args.redo:
-        return
+        console.log(f"Results file already exists at {output_fpath}. Skipping.")
+        return 
 
-    # Load individual test generations.
-    individual_generations_fpath = predictions_dir / "individual_test.json"
-    with open(individual_generations_fpath, "r") as f:
-        individual_generations = json.load(f)
-    individual_generations = np.array(individual_generations["generations"])
-    console.log(
-        f"Loaded individual generations of shape {individual_generations.shape}"
-    )
-
+    test_generations = load_predictions(predictions_dir, "test", args)
+    
     sequence_texts = []
-    for trial in range(10):
+    for _ in range(10):
+        # we do pick-random ten times to reduce noise
         trial_generations = []
-        for sample_idx in tqdm(range(len(individual_generations))):
+        for sample_idx in tqdm(range(len(test_generations))):
             # Select a random generation from the individual generations.
-            generation_idx = np.random.randint(individual_generations.shape[1])
-            generation = individual_generations[sample_idx][generation_idx]
+            generation_idx = np.random.randint(test_generations.shape[1])
+            generation = test_generations[sample_idx][generation_idx]
             trial_generations.append(generation)
         sequence_texts.append(trial_generations)
 
@@ -90,7 +86,6 @@ def main(args):
         "generations": sequence_texts,
     }
     output_fpath.write_text(json.dumps(results, indent=4))
-
 
 if __name__ == "__main__":
     console.log("#" * 30)

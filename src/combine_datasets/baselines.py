@@ -90,6 +90,7 @@ def main(args):
             is_train=False,
             n_samples=data_config["test_size"],
             hf_cache_dir=args.hf_cache_dir,
+            doc_key=data_config["doc_key"]
         )
         test_datasets.append(test_df)
 

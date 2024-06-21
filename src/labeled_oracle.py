@@ -1,19 +1,27 @@
 """
-Implements different labeled oracles for evaluation.
+    Implements the best-on-val baseline
 """
 
+import warnings
+
+warnings.filterwarnings(
+    "ignore", category=UserWarning, message="TypedStorage is deprecated"
+)
 
 import argparse
 import json
 
 import numpy as np
+from tqdm.auto import tqdm
 
 from src.console import console
 from src.evaluate.metrics import *
 from src.evaluate.scorer import *
-from src.utils import (check_results_file, clean_generations,
-                       construct_predictions_dir_path, load_data_config,
-                       load_hf_dataset)
+from src.multi_model.utils import load_predictions
+from src.utils import (check_results_file, construct_predictions_dir_path,
+                       load_data_config, load_hf_dataset,
+                       construct_labeled_oracle_predictions_path)
+
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--model", type=str, help="LLM to use")
@@ -30,7 +38,6 @@ parser.add_argument(
 )
 parser.add_argument(
     "--results_dir",
-    default="generative_ensembles_data/benchmark_results",
     type=str,
     help="Results directory",
 )
@@ -46,82 +53,66 @@ parser.add_argument(
     type=int,
     help="Number of trials to run for train oracle sampling method.",
 )
-
 parser.add_argument(
     "--redo",
     action="store_true",
     help="Redo evaluation even if results already exist. Otherwise, we only evaluate methods/metrics which aren't already evaluated.",
 )
+parser.add_argument(
+    "--model_group",
+    help="The models to use for predictions",
+)
 
+TASK2METRIC = {
+    "cnn_dailymail": METRIC_FUNCS["rouge2"],
+    "definition_extraction": METRIC_FUNCS["definition_extraction_acc"],
+    "e2e_nlg": METRIC_FUNCS["rouge2"],
+    "squad": METRIC_FUNCS["squad_acc"],
+    "trivia_qa": METRIC_FUNCS["trivia_qa_acc"],
+    "web_nlg": METRIC_FUNCS["rouge2"],
+    "xsum": METRIC_FUNCS["rouge2"]
+}
 
 def main(args):
-    # Load data config, prompts, and create output directory
     data_config = load_data_config(args)
-    console.log(data_config)
-    predictions_dir = construct_predictions_dir_path(data_config, args)
-    output_fpath = predictions_dir / f"labeled_oracle_test.json"
+    output_fpath = construct_labeled_oracle_predictions_path(data_config, args.model, args)
+    predictions_dir = output_fpath.parent 
 
-    # Check if the results file already exists
     if check_results_file(output_fpath) and not args.redo:
         console.log(f"Results file already exists at {output_fpath}. Skipping.")
-        return
+        return 
 
-    # Load datasets
+    train_generations = load_predictions(predictions_dir, "train", args)
+    test_generations = load_predictions(predictions_dir, "test", args)
+    n_samples, n_prompts = train_generations.shape
+
     train_dataset = load_hf_dataset(
         dataset_name=data_config["dataset"],
         is_train=False,
         n_samples=data_config["test_size"],
         hf_cache_dir=args.hf_cache_dir,
+        doc_key=data_config["doc_key"]
     )
     train_references = get_references(train_dataset, data_config)
-
-    # Load train and test generations
-    with open(predictions_dir / "individual_train.json", "r") as f:
-        individual_generations_train = json.load(f)
-    individual_generations_train = np.array(individual_generations_train["generations"])
-
-    with open(predictions_dir / "individual_test.json", "r") as f:
-        individual_generations_test = json.load(f)
-    individual_generations_test = np.array(individual_generations_test["generations"])
-
-    n_samples, n_prompts = individual_generations_train.shape
-
-    # Pick metric func
-    if data_config["dataset"] in [
-        "e2e_nlg",
-        "cnn_dailymail",
-        "xsum",
-        "common_gen",
-        "web_nlg",
-    ]:
-        metric_func = METRIC_FUNCS["rouge2"]
-    elif data_config["dataset"] in ["squad"]:
-        metric_func = METRIC_FUNCS["squad_acc"]
-    elif data_config["dataset"] in ["trivia_qa"]:
-        metric_func = METRIC_FUNCS["trivia_qa_acc"]
-    elif data_config["dataset"] in ["definition_extraction"]:
-        metric_func = METRIC_FUNCS["definition_extraction_acc"]
-    else:
+    if data_config['dataset'] not in TASK2METRIC:
         raise ValueError(f"Dataset {data_config['dataset']} not supported.")
+
+    metric_func = TASK2METRIC[data_config['dataset']]
 
     generations = []
     for _ in range(args.label_train_n_trials):
-        # Sample points from train set
         sampled_indices = np.random.choice(
-            len(individual_generations_train), args.label_train_sample_size
+            n_samples, args.label_train_sample_size
         )
         sampled_references = [train_references[idx] for idx in sampled_indices]
         prompt_scores = []
         for prompt_idx in range(n_prompts):
-            sampled_generations = individual_generations_train[
-                sampled_indices, prompt_idx
-            ]
+            sampled_generations = train_generations[sampled_indices, prompt_idx]
             cleaned_generations = clean_generations(sampled_generations, data_config)
             scores = metric_func(cleaned_generations, sampled_references)
             prompt_scores.append(np.mean(scores))
-
         best_prompt_idx = np.argmax(prompt_scores)
-        generations.append(individual_generations_test[:, best_prompt_idx].tolist())
+        generations.append(test_generations[:, best_prompt_idx].tolist())
 
     results = {
         "generations": generations,

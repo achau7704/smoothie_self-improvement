@@ -89,6 +89,7 @@ def main(args):
         is_train=True,
         n_samples=data_config["train_size"],
         hf_cache_dir=args.hf_cache_dir,
+        doc_key=data_config["doc_key"]
     )
     train_references = get_references(train_dataset, data_config)
 
@@ -97,6 +98,7 @@ def main(args):
         is_train=False,
         n_samples=data_config["test_size"],
         hf_cache_dir=args.hf_cache_dir,
+        doc_key=data_config["doc_key"]
     )
 
     # Embed train and test generations

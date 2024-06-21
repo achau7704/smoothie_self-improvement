@@ -16,9 +16,26 @@ from fastembed import TextEmbedding
 
 from src.console import console
 from src.constants import HF_MODELS, HF_TEST_DATASETS, HF_TRAIN_DATASETS
+from src.constants import HF_MODEL_MAX_LENGTHS
+
+
 
 transformers.logging.set_verbosity_error()
 
+
+GROUP_TO_DATASET_CONFIGS = {
+    "acc_group": [
+        "dataset_configs/squad.yaml",
+        "dataset_configs/trivia_qa_knowledge.yaml",
+        "dataset_configs/definition_extraction.yaml"
+    ],
+    "rouge2_group": [
+        "dataset_configs/cnn_dailymail_0_shot.yaml",
+        "dataset_configs/xsum_0_shot.yaml",
+        "dataset_configs/e2e_nlg_1_shot.yaml",
+        "dataset_configs/web_nlg_1_shot.yaml",
+    ]
+}
 
 def load_data_config(args: argparse.Namespace):
     """
@@ -27,6 +44,7 @@ def load_data_config(args: argparse.Namespace):
     Args:
         args (argparse.Namespace): arguments from the command line
     """
+
     return yaml.load(Path(args.data_config_path).read_text(), Loader=yaml.FullLoader)
 
 
@@ -50,27 +68,89 @@ def load_prompts(data_config: Dict, args: argparse.Namespace):
     test_prompts = json.loads(test_prompts_fpath.read_text())
     return np.array(train_prompts), np.array(test_prompts)
 
+def construct_predictions_dir_path(data_config, args, model):
+    if args.model_group is not None:
+        results_dir = Path(args.results_dir) / data_config["prompt"]
+        results_dir.mkdir(exist_ok=True, parents=True)
+    else:
+        results_dir = Path(args.results_dir) / data_config["prompt"] / model
+        results_dir.mkdir(exist_ok=True, parents=True)
 
-def construct_predictions_dir_path(
-    data_config: Dict, args: argparse.Namespace, multi_model: bool = False
-):
+    return results_dir 
+def construct_predictions_path(data_config: Dict, model: str, args: argparse.Namespace):
     """
-    Construct the path to the directory where predictions will be saved.
+    Construct the paths where train and test predictions will be saved.
 
     Args:
         args (argparse.Namespace): arguments from the command line
         data_config (dict): data config
     """
-    if multi_model:
-        results_dir = Path(args.results_dir) / data_config["prompt"]
-        results_dir.mkdir(exist_ok=True, parents=True)
+    results_dir = construct_predictions_dir_path(data_config, args, model)
+
+    if args.model_group is None:
+        file_name = "individual_"
     else:
-        results_dir = Path(args.results_dir) / data_config["prompt"] / args.model
-        results_dir.mkdir(exist_ok=True, parents=True)
-    return results_dir
+        file_name = f"{model}_"
+
+    if args.n_generations > 1:
+        file_name += f"{args.n_generations}_gens_"
+
+    if args.test:
+        file_name += "test_"
+
+    train_output_fpath = results_dir / f"{file_name}train.json"
+    test_output_fpath = results_dir / f"{file_name}test.json"
+    return train_output_fpath, test_output_fpath
+
+def construct_smoothie_predictions_path(data_config: Dict, model: str, args: argparse.Namespace):
+    """
+    Construct the paths where train and test predictions will be saved.
+
+    Args:
+        args (argparse.Namespace): arguments from the command line
+        data_config (dict): data config
+    """
+    results_dir = construct_predictions_dir_path(data_config, args, model)
+    if args.model_group is not None:
+        output_fpath = str(results_dir) + f"/smoothie_{args.type}_{args.model_group}_"
+    else:
+        output_fpath = str(results_dir) + f"/smoothie_{args.type}_"
+    no_flags = True 
+    if args.type == "sample_dependent" and args.n_generations == 1:
+        output_fpath += f"{args.k}_"
+        no_flags = False
+    elif args.n_generations > 1: 
+        output_fpath += f"{args.n_generations}_gens_"
+        no_flags=False
+    if args.use_full_text_embeddings:
+        output_fpath += f"full_embeddings_"
+        no_flags = False 
+    if no_flags:
+        output_fpath += "new_"
+    output_fpath += f"test.json"
+    output_fpath = Path(output_fpath)
+    return output_fpath
+
+def construct_pick_random_predictions_path(data_config: Dict, model: str, args: argparse.Namespace):
+    results_dir = construct_predictions_dir_path(data_config, args, model)
+    if args.model_group is not None:
+        output_fpath = results_dir / f"pick_random_{args.model_group}_test.json"
+    else:
+        output_fpath = results_dir / "pick_random_test.json"
+    output_fpath = Path(output_fpath)
+    return output_fpath 
+
+def construct_labeled_oracle_predictions_path(data_config: Dict, model: str, args: argparse.Namespace):
+    results_dir = construct_predictions_dir_path(data_config, args, model)
+    if args.model_group is not None:
+        output_fpath = results_dir / f"labeled_oracle_{args.model_group}_test.json"
+    else:
+        output_fpath = results_dir / "labeled_oracle_test.json"
+    output_fpath = Path(output_fpath)
+    return output_fpath 
 
 
-def load_hf_model(args: argparse.Namespace):
+def load_hf_model(model_name, args: argparse.Namespace):
     """
     Load a HuggingFace model and tokenizer.
 
@@ -78,13 +158,13 @@ def load_hf_model(args: argparse.Namespace):
         args (argparse.Namespace): arguments from the command line
     """
     model = AutoModelForCausalLM.from_pretrained(
-        HF_MODELS[args.model],
+        HF_MODELS[model_name],
         cache_dir=args.hf_cache_dir,
         trust_remote_code=True,
     )
     model.to(args.device)
     tokenizer = AutoTokenizer.from_pretrained(
-        HF_MODELS[args.model],
+        HF_MODELS[model_name],
         cache_dir=args.hf_cache_dir,
         truncation_side="left",
         trust_remote_code=True,
@@ -164,7 +244,7 @@ def get_latent_state(
 
 
 def load_hf_dataset(
-    dataset_name: str, is_train: bool, n_samples: int, hf_cache_dir: str
+    dataset_name: str, is_train: bool, n_samples: int, hf_cache_dir: str, doc_key: str,
 ) -> pd.DataFrame:
     """
     Load a dataset from the HuggingFace datasets library. Returns dataset as pandas dataframe.
@@ -247,13 +327,8 @@ def load_hf_dataset(
         # Convert the dataset to a pandas dataframe
         data_df = dataset.to_pandas()
 
-    if dataset_name == "sentence_compression":
-        # The sentence_compression dataset has a different structure. We have to create a data frame
-        # from the examples.
-        lst = data_df["set"].tolist()
-        sentence = [x[0] for x in lst]
-        summary = [x[1] for x in lst]
-        data_df = pd.DataFrame.from_dict({"sentence": sentence, "summary": summary})
+    if dataset_name == "web_nlg":
+        data_df[doc_key] = data_df.apply(lambda x: "\n".join(x['modified_triple_sets']['mtriple_set'][0]), axis=1)
 
     # If n_samples is greater than 0, only load a random number of n_samples examples.
     if n_samples > 0:
@@ -299,22 +374,18 @@ def get_generation_output(input, output):
     return output["sequences"][0, input_len:].detach().to("cpu").tolist()
 
 
-def clean_generation(generation: str, data_config: Dict):
+def clean_generation(generation: str):
     """
     Extracts a generation from the full output of the model. This function is dataset specific. For instance, GSM8K answers span multiple lines, while most others only span one line.
     """
-    if data_config["dataset"] == "gsm8k":
-        # Check for "Question:"
-        return generation.split("Question")[0].strip()
-    else:
-        return generation.strip().split("\n")[0]
+    return generation.strip().split("\n")[0]
 
 
 def clean_generations(generations: list, data_config: Dict):
     """
     Cleans generations from the model output. This function is dataset specific. For instance, GSM8K answers span multiple lines, while most others only span one line.
     """
-    return [clean_generation(generation, data_config) for generation in generations]
+    return [clean_generation(generation) for generation in generations]
 
 
 def check_results_file(output_fpath: Path) -> bool:
@@ -348,7 +419,7 @@ def compute_embedding(embedding_model_name, text_inputs):
 
 
 def embed_individual_generations(
-    individual_generations: np.ndarray, data_config: dict, model_name: str
+    individual_generations: np.ndarray, model_name: str
 ):
     """
     This function returns embeddings of a matrix of individual generations. It applies a dataset
@@ -362,7 +433,7 @@ def embed_individual_generations(
         processed_generations.append([])
         for prompt_idx in range(n_prompts):
             generation = individual_generations[sample_idx, prompt_idx]
-            cleaned_generation = clean_generation(generation, data_config)
+            cleaned_generation = clean_generation(generation)
             processed_generations[-1].append(cleaned_generation)
     processed_generations = np.array(processed_generations)
 
@@ -377,13 +448,50 @@ def get_input_text(data_df, data_config):
     """
     Returns input text for dataset.
     """
-    if data_config["dataset"] == "web_nlg":
-        texts = []
-        for row in data_df.to_dict(orient="records"):
-            triples = ""
-            for triple in row["modified_triple_sets"]["mtriple_set"][0]:
-                triples += f"{triple}\n"
-            texts.append(triples)
-        return texts
-    else:
-        return data_df[data_config["doc_key"]].tolist()
+    return data_df[data_config["doc_key"]].tolist()
+
+def generate_per_sample_single_prompt(data_config, args, model_name, model, tokenizer, prompt, gen_params):
+    sequence_texts = []
+    #print(f"PROMPT IS {prompt}")
+    prompt_encodings = tokenizer(
+        prompt,
+        return_tensors="pt",
+        truncation=True,
+        max_length=HF_MODEL_MAX_LENGTHS[model_name],
+    ).to(args.device)
+
+    for i in range(args.n_generations):
+        output = model.generate(
+            **prompt_encodings,
+            max_new_tokens=data_config["max_new_tokens"],
+            return_dict_in_generate=True,
+            pad_token_id=tokenizer.eos_token_id,
+            output_scores=True,
+            **gen_params
+        )
+
+        # Get the token ids corresponding to the generation. output["sequences"] is a tensor of shape (batch_size, seq_len)
+        sequence_texts.append(
+            tokenizer.decode(get_generation_output(prompt_encodings, output))
+        )
+
+    # returns a list of args.n_generations outputs
+
+    return sequence_texts
+
+def generate_per_sample_multi_prompt(data_config, args, model_name, model, tokenizer, prompts, gen_params):
+    sequence_texts = [] # will be a list: p1 output1, p1 output2, ..., p2 output1, p2 output2, ...
+    for prompt_idx in range(len(prompts)):
+        texts = generate_per_sample_single_prompt(
+            data_config,
+            args,
+            model_name,
+            model, 
+            tokenizer,
+            prompts[prompt_idx],
+            gen_params
+        )
+        sequence_texts.extend(texts)
+    # returns a list of n_prompts * n_generations outputs
+    return sequence_texts
+

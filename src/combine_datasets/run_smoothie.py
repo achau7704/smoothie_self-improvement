@@ -92,6 +92,7 @@ def main(args):
             is_train=False,
             n_samples=data_config["test_size"],
             hf_cache_dir=args.hf_cache_dir,
+            doc_key=data_config["doc_key"]
         )
         test_datasets.append(test_df)
 
@@ -136,7 +137,6 @@ def main(args):
             # Each of the embeddings is an array of shape (n_task_samples, 768)
             embeddings = embed_individual_generations(
                 individual_generations=generations,
-                data_config=data_config,
                 model=embedding_model,
             )
             model_embeddings.append(embeddings)

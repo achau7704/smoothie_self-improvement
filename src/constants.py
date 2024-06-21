@@ -7,7 +7,6 @@ HF_TEST_DATASETS = {
     "cnn_dailymail": ("cnn_dailymail", "3.0.0", "test"),
     "definition_extraction": ("nguha/legalbench", "definition_extraction", "test"),
     "alpaca_eval": ("tatsu-lab/alpaca_eval", "alpaca_eval_gpt4_baseline", "eval"),
-    "sentence_compression": ("embedding-data/sentence-compression", None, "train"),
     "gigaword": ("gigaword", None, "test"),
     "xsum": ("EdinburghNLP/xsum", None, "test"),
     "e2e_nlg": ("e2e_nlg", None, "test"),
