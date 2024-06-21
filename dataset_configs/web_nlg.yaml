@@ -1,7 +1,7 @@
 dataset: web_nlg
-prompt: web_nlg_1_shot
+multi_prompt_template: web_nlg_multi_prompt
+multi_model_prompt_template: web_nlg_multi_model
 max_new_tokens: 50
-doc_key: meaning_representation
 reference_key: lex
 stop_token: \n\n
 train_size: 100

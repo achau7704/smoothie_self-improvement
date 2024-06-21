@@ -1,7 +1,7 @@
 dataset: squad
-prompt: squad
+multi_prompt_template: squad_multi_prompt
+multi_model_prompt_template: squad_multi_model
 max_new_tokens: 20
-doc_key: context
 reference_key: value
 train_size: 250
 test_size: 1000

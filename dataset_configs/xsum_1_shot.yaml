@@ -1,6 +1,0 @@
-dataset: xsum
-prompt: xsum_1_shot
-max_new_tokens: 30
-doc_key: document
-reference_key: summary
-stop_token: \n\n

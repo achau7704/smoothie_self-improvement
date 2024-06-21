@@ -1,7 +1,7 @@
 dataset: trivia_qa
-prompt: trivia_qa_knowledge
+multi_prompt_template: trivia_qa_multi_prompt
+multi_model_prompt_template: trivia_qa_multi_model
 max_new_tokens: 40
-doc_key: question
 reference_key: answer
 train_size: 250
 test_size: 1000
