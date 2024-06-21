@@ -9,6 +9,14 @@ We store all datasets, predictions, and results from the paper in a Hugging Face
 > git clone https://huggingface.co/datasets/hazyresearch/smoothie_data
 ```
 
+## Environment
+
+```
+> conda create -n "smoothie" python=3.10 -y
+> conda activate smoothie
+> 
+```
+
 ## Reproducing the paper
 
 ### Datasets
@@ -18,23 +26,21 @@ For single task datasets, each configuration file contains the following fields:
 
 ```yaml 
 # Name of the dataset
-dataset: e2e_nlg
-# Name of the prompt template to use for the multi-prompt setting
-multi_prompt_template: e2e_nlg_1_shot
-# Name of the prompt template to use for the multi-model setting
-multi_model_prompt_template: e2e_nlg_1_shot
+dataset: squad
+# Name of the prompt template to use for the multi-prompt setting. There should be a file called $multi_prompt_template.json in prompt_templates. It should contain a list of f-strings.
+multi_prompt_template: squad_multi_prompt
+# Name of the prompt template to use for the multi-model setting. There should be a file called $multi_model_prompt_template.txt in prompt_templates. It should contain a single f-string.
+multi_model_prompt_template: squad_multi_model
 # Maximum number of new tokens to generate
-max_new_tokens: 50
-# Preprocessing function to use
-preprocess: preprocess_e2e_nlg
+max_new_tokens: 20
+# Column name for the reference text
+reference_key: value
 # Train and test sizes
 train_size: 250
 test_size: 1000
 # Metrics to compute for evaluation
 metrics:
-  - rouge1
-  - rouge2
-  - rougeL
+  - squad_acc
 ```
 
 For multi-task datasets, each configuration file contains the following fields:
@@ -49,15 +55,16 @@ tasks:
 
 Train and test splits for datasets are saved to `$HF_DATASETS_DIR/datasets/` as `$config_filename_train.tsv` and `$config_filename_test.tsv`. Each tsv file contains the following columns:
 - `idx`: Unique identifier for the sample
-- `input_text`: Text input used when computing lookup embeddings.
-- `multi_model_prompt_template`: The prompt used for the multi-model setting.
-- `multi_prompt_template_{i}`: The prompt used for the i-th prompt in the multi-prompt setting.
-- `reference_text`: The reference text for the sample.
+- `reference`: The gold reference text for the sample.
+- `embedding_input`: Text input used when computing lookup embeddings.
+- `multi_model_prompt`: The prompt used for the multi-model setting.
+- `multi_prompt_{i}`: The prompt used for the i-th prompt in the multi-prompt setting.
+
 
 To produce the train and test splits, run the following command:
 
 ```bash
-> python -m src.make_dataset --config $config_filename
+> python -m src.make_dataset --dataset_config $config_filename
 ```
 
 
