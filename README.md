@@ -27,9 +27,9 @@ For single task datasets, each configuration file contains the following fields:
 ```yaml 
 # Name of the dataset
 dataset: squad
-# Name of the prompt template to use for the multi-prompt setting. There should be a file called $multi_prompt_template.json in prompt_templates. It should contain a list of f-strings.
+# Name of the prompt template to use for the multi-prompt setting. There should be a file called squad_multi_prompt.json in prompt_templates. It should contain a list of f-strings.
 multi_prompt_template: squad_multi_prompt
-# Name of the prompt template to use for the multi-model setting. There should be a file called $multi_model_prompt_template.txt in prompt_templates. It should contain a single f-string.
+# Name of the prompt template to use for the multi-model setting. There should be a file called squad_multi_model.txt in prompt_templates. It should contain a single f-string.
 multi_model_prompt_template: squad_multi_model
 # Maximum number of new tokens to generate
 max_new_tokens: 20

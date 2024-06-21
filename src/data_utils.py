@@ -137,6 +137,7 @@ def generate_prompt(config: Dict, prompt_template: str, row: Dict) -> str:
     else:
         return prompt_template.format(**row)
 
+
 def get_embedding_inputs(config: Dict, row: Dict) -> str:
     """
     Constructs the text sequence used for generating embeddings.
@@ -151,7 +152,6 @@ def get_embedding_inputs(config: Dict, row: Dict) -> str:
     if config["dataset"] == "web_nlg":
         embedding_input = ""
         for triple in row["modified_triple_sets"]["mtriple_set"][0]:
-            print(triple)
             embedding_input += f"{triple}\n"
     elif config["dataset"] == "squad":
         embedding_input = row["context"]

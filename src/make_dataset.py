@@ -1,7 +1,14 @@
 """
-This script generates the prompts to feed into an LLM for each dataset. Each prompt template is defined as a function.
 
-Example command: python -m src.generate_prompts --hf_cache_dir cache --prompts_dir prompts --config_path configs/gsm8k_1_shot_cot_simple.yaml  --n_samples 4
+
+Currently supported datasets
+
+    - squad
+    - trivia_qa
+    - xsum
+    - cnn_dailymail
+    - definition_extraction
+    - e2e_nlg
 """
 
 import argparse
@@ -46,6 +53,9 @@ def main(args):
         Path(args.dataset_config).read_text(), Loader=yaml.FullLoader
     )
     console.log(data_config)
+
+    # Extract config name from file name
+    config_name = Path(args.dataset_config).stem
 
     # Load dataset
     train_df, test_df = load_hf_dataset(
@@ -113,10 +123,10 @@ def main(args):
 
     # Save dataframes
     Path(args.data_dir).mkdir(parents=True, exist_ok=True)
-    train_fpath = Path(args.data_dir) / f"{data_config['dataset']}_train.csv"
+    train_fpath = Path(args.data_dir) / f"{config_name}_train.csv"
     train_df.to_csv(train_fpath, index=False)
     console.log(f"Saved training data to {train_fpath}")
-    test_fpath = Path(args.data_dir) / f"{data_config['dataset']}_test.csv"
+    test_fpath = Path(args.data_dir) / f"{config_name}_test.csv"
     test_df.to_csv(test_fpath, index=False)
     console.log(f"Saved testing data to {test_fpath}")
 
