@@ -67,6 +67,8 @@ def load_hf_dataset(
         train_df = data_df.iloc[:100]
         test_df = data_df.iloc[100:]
 
+        return train_df, test_df
+
     else:
         
         # Get train split
@@ -105,11 +107,11 @@ def load_hf_dataset(
     # If n_samples is greater than 0, only load a random number of n_samples examples.
     if config["train_size"] > 0:
         n_samples = min(config["train_size"], len(train_df))
-        train_df = data_df.sample(n=config["train_size"], random_state=42)
+        train_df = train_df.sample(n=config["train_size"], random_state=42)
 
     if config["test_size"] > 0:
         n_samples = min(config["test_size"], len(test_df))
-        test_df = data_df.sample(n=config["test_size"], random_state=42)
+        test_df = test_df.sample(n=config["test_size"], random_state=42)
 
     return train_df, test_df
 
@@ -149,9 +151,20 @@ def get_embedding_inputs(config: Dict, row: Dict) -> str:
     if config["dataset"] == "web_nlg":
         embedding_input = ""
         for triple in row["modified_triple_sets"]["mtriple_set"][0]:
+            print(triple)
             embedding_input += f"{triple}\n"
     elif config["dataset"] == "squad":
         embedding_input = row["context"]
+    elif config["dataset"] == "trivia_qa":
+        embedding_input = row["question"]
+    elif config["dataset"] == "xsum":
+        embedding_input = row["document"]
+    elif config["dataset"] == "cnn_dailymail":
+        embedding_input = row["article"]
+    elif config["dataset"] == "definition_extraction":
+        embedding_input = row["text"]
+    elif config["dataset"] == "e2e_nlg":
+        embedding_input = row["meaning_representation"]
     else:
         raise NotImplementedError(f"Embedding inputs not implemented for {config['dataset']}")
     return embedding_input

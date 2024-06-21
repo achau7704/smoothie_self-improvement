@@ -27,7 +27,7 @@ def load_data_config(args: argparse.Namespace):
     Args:
         args (argparse.Namespace): arguments from the command line
     """
-    return yaml.load(Path(args.data_config_path).read_text(), Loader=yaml.FullLoader)
+    return yaml.load(Path(args.dataset_config).read_text(), Loader=yaml.FullLoader)
 
 
 def load_prompts(data_config: Dict, args: argparse.Namespace):
@@ -163,133 +163,6 @@ def get_latent_state(
     return embedding
 
 
-def load_hf_dataset(
-    dataset_name: str, is_train: bool, n_samples: int, hf_cache_dir: str
-) -> pd.DataFrame:
-    """
-    Load a dataset from the HuggingFace datasets library. Returns dataset as pandas dataframe.
-
-    Args:
-        dataset_name (str): dataset name
-        is_train (bool): whether to load the train or test split
-        n_samples (int): number of samples to load
-        cache_dir (str): cache directory
-    """
-
-    if dataset_name in ["squad"]:
-        # These datasets don't have a train split, so we treat the "train" as the first half of the validation split
-        hf_url, subset, split = HF_TEST_DATASETS[dataset_name]
-
-        if subset is not None:
-            dataset = load_dataset(
-                hf_url,
-                subset,
-                split=split,
-                cache_dir=hf_cache_dir,
-                trust_remote_code=True,
-            )
-        else:
-            dataset = load_dataset(
-                hf_url, split=split, cache_dir=hf_cache_dir, trust_remote_code=True
-            )
-        # Convert the dataset to a pandas dataframe
-        data_df = dataset.to_pandas()
-
-        if is_train:
-            # Take the first half
-            data_df = data_df.iloc[: len(data_df) // 2]
-        else:
-            # Take the second half
-            data_df = data_df.iloc[len(data_df) // 2 :]
-    elif dataset_name in ["definition_extraction"]:
-        # For this, we take the first 100 as the train
-        hf_url, subset, split = HF_TEST_DATASETS[dataset_name]
-
-        if subset is not None:
-            dataset = load_dataset(
-                hf_url,
-                subset,
-                split=split,
-                cache_dir=hf_cache_dir,
-                trust_remote_code=True,
-            )
-        else:
-            dataset = load_dataset(
-                hf_url, split=split, cache_dir=hf_cache_dir, trust_remote_code=True
-            )
-        # Convert the dataset to a pandas dataframe
-        data_df = dataset.to_pandas()
-
-        if is_train:
-            data_df = data_df.iloc[:100]
-        else:
-            data_df = data_df.iloc[100:]
-
-    else:
-        if is_train:
-            hf_url, subset, split = HF_TRAIN_DATASETS[dataset_name]
-        else:
-            hf_url, subset, split = HF_TEST_DATASETS[dataset_name]
-
-        if subset is not None:
-            dataset = load_dataset(
-                hf_url,
-                subset,
-                split=split,
-                cache_dir=hf_cache_dir,
-                trust_remote_code=True,
-            )
-        else:
-            dataset = load_dataset(
-                hf_url, split=split, cache_dir=hf_cache_dir, trust_remote_code=True
-            )
-
-        # Convert the dataset to a pandas dataframe
-        data_df = dataset.to_pandas()
-
-    if dataset_name == "sentence_compression":
-        # The sentence_compression dataset has a different structure. We have to create a data frame
-        # from the examples.
-        lst = data_df["set"].tolist()
-        sentence = [x[0] for x in lst]
-        summary = [x[1] for x in lst]
-        data_df = pd.DataFrame.from_dict({"sentence": sentence, "summary": summary})
-
-    # If n_samples is greater than 0, only load a random number of n_samples examples.
-    if n_samples > 0:
-        n_samples = min(n_samples, len(data_df))
-        data_df = data_df.sample(n=n_samples, random_state=42)
-
-    return data_df
-
-
-def move_tensors_to_cpu(tuple_of_tuples):
-    result_tuple = tuple(
-        tuple(tensor.detach().to("cpu") for tensor in inner_tuple)
-        for inner_tuple in tuple_of_tuples
-    )
-    torch.cuda.empty_cache()  # Free up GPU memory
-    return result_tuple
-
-
-def move_tensors_to_gpu(tuple_of_tuples):
-    result_tuple = tuple(
-        tuple(tensor.detach().to("cuda") for tensor in inner_tuple)
-        for inner_tuple in tuple_of_tuples
-    )
-    torch.cuda.empty_cache()  # Free up GPU memory
-    return result_tuple
-
-
-def get_gpu_memory():
-    command = "nvidia-smi --query-gpu=memory.free --format=csv"
-    memory_free_info = (
-        sp.check_output(command.split()).decode("ascii").split("\n")[:-1][1:]
-    )
-    memory_free_values = [int(x.split()[0]) for i, x in enumerate(memory_free_info)]
-    return memory_free_values
-
-
 def get_generation_output(input, output):
     """
     By default, Huggingface returns the prompt + the generated text. This function
@@ -371,19 +244,3 @@ def embed_individual_generations(
     embeddings = compute_embedding(model_name, flattened_generations)
     embeddings = embeddings.reshape(n_samples, n_prompts, -1)
     return embeddings
-
-
-def get_input_text(data_df, data_config):
-    """
-    Returns input text for dataset.
-    """
-    if data_config["dataset"] == "web_nlg":
-        texts = []
-        for row in data_df.to_dict(orient="records"):
-            triples = ""
-            for triple in row["modified_triple_sets"]["mtriple_set"][0]:
-                triples += f"{triple}\n"
-            texts.append(triples)
-        return texts
-    else:
-        return data_df[data_config["doc_key"]].tolist()
