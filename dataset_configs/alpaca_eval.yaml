@@ -1,4 +1,0 @@
-dataset: alpaca_eval
-max_new_tokens: 1200
-instruction_key: "instruction"
-reference_key: "output"

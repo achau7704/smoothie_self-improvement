@@ -1,7 +1,7 @@
 dataset: cnn_dailymail
-prompt: cnn_dailymail_0_shot
+multi_prompt_template: cnn_dailymail_multi_prompt
+multi_model_prompt_template: cnn_dailymail_multi_model
 max_new_tokens: 75
-doc_key: article
 reference_key: highlights
 train_size: 250
 test_size: 1000

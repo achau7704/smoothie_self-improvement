@@ -1,0 +1,7 @@
+# data 
+smoothie_data
+cache 
+
+# python
+**/*.pyc
+

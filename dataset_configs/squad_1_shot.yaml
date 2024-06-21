@@ -1,9 +1,0 @@
-dataset: squad
-prompt: squad_1_shot
-max_new_tokens: 30
-doc_key: context
-reference_key: value
-train_size: 250
-test_size: 1000
-metrics:
-  - squad_acc
