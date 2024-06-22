@@ -19,10 +19,8 @@ We store all datasets, predictions, and results from the paper in a Hugging Face
 
 ## Reproducing the paper
 
-### Datasets
-`dataset_configs` contains the configuration files for the datasets used in the paper. 
-
-For single task datasets, each configuration file contains the following fields:
+### Single-task datasets
+`dataset_configs` contains the configuration files for all single-task datasets. Each configuration file contains the following fields:
 
 ```yaml 
 # Name of the dataset
@@ -43,29 +41,46 @@ metrics:
   - squad_acc
 ```
 
-For multi-task datasets, each configuration file contains the following fields:
+The script `src/make_dataset.py` downloads the datasets from Huggingface, creates the train and test splits, generates prompts for each row, and saves the resulting splits to disk. To create the train and test splits for a dataset, run the following command:
 
-```yaml
-# Configuration for each task in the dataset
-tasks:
-  - squad.yaml # Configuration file for the first task
-  - trivia_qa.yaml # Configuration file for the second task
-  - definition_extraction.yaml # Configuration file for the third task
+```bash
+> python -m src.make_dataset --dataset_config $config_filename
 ```
 
-Train and test splits for datasets are saved to `$HF_DATASETS_DIR/datasets/` as `$config_filename_train.tsv` and `$config_filename_test.tsv`. Each tsv file contains the following columns:
+Train and test splits for datasets are saved to `$HF_DATASETS_DIR/datasets/` as `${config_filename}_train.csv` and `${config_filename}_test.csv`. Each csv file contains the following columns:
 - `idx`: Unique identifier for the sample
 - `reference`: The gold reference text for the sample.
 - `embedding_input`: Text input used when computing lookup embeddings.
 - `multi_model_prompt`: The prompt used for the multi-model setting.
 - `multi_prompt_{i}`: The prompt used for the i-th prompt in the multi-prompt setting.
 
+### Multi-task datasets
 
-To produce the train and test splits, run the following command:
+For multi-task datasets, each configuration file instead only contains the following fields:
+
+```yaml
+# This file contains the configuration for the accuracy group of tasks
+tasks:
+  - dataset_configs/squad.yaml # Configuration file for the first task
+  - dataset_configs/trivia_qa.yaml # Configuration file for the second task
+  - dataset_configs/definition_extraction.yaml # Configuration file for the third task
+```
+
+We use the script `src/make_multi_task_dataset.py` to create the train and test splits for multi-task datasets as well:
 
 ```bash
-> python -m src.make_dataset --dataset_config $config_filename
+> python -m src.make_dataset --dataset_config dataset_configs/acc_group.yaml
 ```
+
+Train and test splits for datasets are also saved to `$HF_DATASETS_DIR/datasets/` as `${config_filename}_train.csv` and `${config_filename}_test.csv`. Each csv file contains the following columns:
+- `idx`: Unique identifier for the sample
+- `task`: The task that the sample belongs to
+- `reference`: The gold reference text for the sample.
+- `embedding_input`: Text input used when computing lookup embeddings.
+- `multi_model_prompt`: The prompt used for the multi-model setting.
+
+Note that compared to single-task datasets, multi-task datasets do not contain the `multi_prompt_{i}` columns, and instead contain a `task` column.
+
 
 
 # OLD DOCUMENTATION
