@@ -34,7 +34,7 @@ parser.add_argument(
     "--n_trials",
     default=10,
     type=int,
-    help="Number of trials to run. Each trial we sample k models",
+    help="Number of trials to run. Each trial we sample k models.",
 )
 parser.add_argument(
     "--k",

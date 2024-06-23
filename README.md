@@ -81,104 +81,55 @@ Train and test splits for datasets are also saved to `$HF_DATASETS_DIR/datasets/
 
 Note that compared to single-task datasets, multi-task datasets do not contain the `multi_prompt_{i}` columns, and instead contain a `task` column.
 
+### Alpaca results
 
+We run experiments showing that Smoothie can be used to select the best instruction-following model from a set of models. We use the Alpaca dataset for this purpose. We download predictions of 10 different models from the Alpaca leaderboard. JSON files containing the predictions are stored in `alpaca/downloaded_outputs/`. Each JSON file is a list, where each entry is a dictionary containing the following fields:
 
-# OLD DOCUMENTATION
-
-This is the repository for the generative-ensembles project.
-
-## Folder structure
-
-- `src`: Contains method implementations and scripts for running experiments.
-- `notebooks`: Contains a random assortment of jupyter notebooks.
-- `dataset_configs`: Contains configuration files for datasets. See below for more information.
-- `method_configs`: Contains configuration files for methods. See below for more information.
-
-## Adding a new dataset
-
-If you want to add a new dataset, you need to:
-
-1. Define a dataset configuration file in `dataset_configs`.
-2. Add the dataset to `src/constants.py`.
-3. Create a prompt template.
-4. Write an evaluation function.
-
-### Dataset configuration files
-
-Every experiment operates on a *dataset*. Datasets are defined by a configuration file. For instance:
-
-```yaml
-dataset: e2e_nlg
-prompt: e2e_nlg_1_shot
-max_new_tokens: 50
-doc_key: meaning_representation
-reference_key: human_reference
-train_size: 250
-test_size: 1000
-metrics:
-  - rouge1
-  - rouge2
-  - rougeL
-```
-
-where:
-
-- `dataset` is the name of the dataset.
-- `prompt` is the name of the prompt template to use. See below for more information on prompts.
-- `max_new_tokens` is the maximum number of new tokens to generate.
-- `doc_key` is the key for the text input in the dataset. 
-- `reference_key` is the key for the gold/ground-truth reference in the dataset.
-- `train_size` is the number of samples in the training set.
-- `test_size` is the number of samples in the test set.
-- `metrics` is a list of metrics to compute. See below for more information on evaluation.
-
-### Adding dataset to `src/constants.py`
-
-`src/constants.py` contains important dataset specific constants. If you add a new dataset, be sure to update `HF_TRAIN_DATASETS` and `HF_TEST_DATASETS` in this file.
-
-### Creating a prompt template
-
-The `src/prompts` directory contains code for generating prompts. Generating prompts over a dataset has two steps. 
-
-First, we write save templates for the prompts (i.e., f-strings) to `src/prompts/assets/`. The name of the saved file is the name of the prompt template. For example, here is the prompt template for `e2e_nlg_1_shot.json`:
 ```json
-[
-    "Transform the meaning representation into a sentence.\n\nMeaning representation: name[Alimentum], food[Chinese], priceRange[less than \u00a320], area[riverside], familyFriendly[yes]\nNatural language: Alimentum is a family-friendly Chinese food restaurant in the Riverside area where you can eat for low prices.\n\nMeaning representation: name[Strada], food[Japanese], priceRange[less than \u00a320], customer rating[average], familyFriendly[yes], near[Rainbow Vegetarian Caf\u00e9]\nNatural language: Near the Rainbow Vegetarian Caf\u00e9 is the Strada, which has a price range less then 20 pounds, is family friendly, serves Japanese, and has an average customer rating.\n\nMeaning representation: {meaning_representation}\nNatural language:",
-    "Transform the meaning representation into a sentence.\n\nMeaning representation: name[Green Man], food[Italian], priceRange[moderate], area[city centre], familyFriendly[yes], near[All Bar One]\nNatural language: Green Man is a moderately priced Italian restaurant in the city centre, near to All Bar One. It is kid friendly.\n\nMeaning representation: name[The Waterman], food[Indian], priceRange[cheap], customer rating[average], area[riverside], familyFriendly[no]\nNatural language: The Waterman it is an adult Indian food restaurant. Its food price range is cheap, customer rating on average near to riverside area.\n\nMeaning representation: {meaning_representation}\nNatural language:",
-    "Transform the meaning representation into a sentence.\n\nMeaning representation: name[The Cambridge Blue], eatType[pub], food[Indian], priceRange[cheap], near[Caf\u00e9 Brazil]\nNatural language: The Cambridge Blue is a cheap pub that offers Indian food. It is located near Caf\u00e9 Brazil.\n\nMeaning representation: name[The Eagle], eatType[coffee shop], food[Indian], priceRange[\u00a320-25], customer rating[high], area[city centre], familyFriendly[yes], near[Burger King]\nNatural language: The Eagle is a coffee shop providing Indian food in the \u00a320-25 price range. It is located in the city centre. It is near Burger King. Its customer rating is high.\n\nMeaning representation: {meaning_representation}\nNatural language:",
-    "Transform the meaning representation into a sentence.\n\nMeaning representation: name[The Cambridge Blue], eatType[pub], food[Japanese], priceRange[more than \u00a330], near[Caf\u00e9 Brazil]\nNatural language: The Cambridge Blue Pub serves Japanese food at \u00a330 plus. You can find it near the Caf\u00e9 Brazil.\n\nMeaning representation: name[Fitzbillies], eatType[coffee shop], food[Fast food], priceRange[more than \u00a330], customer rating[high], area[city centre], familyFriendly[no]\nNatural language: In city centre Fitzbillies coffee shop offers a high customer rating. Fast food is offered with a price range of more than \u00a330. We are not children friendly.\n\nMeaning representation: {meaning_representation}\nNatural language:",
-    "Transform the meaning representation into a sentence.\n\nMeaning representation: name[Browns Cambridge], priceRange[high], customer rating[3 out of 5]\nNatural language: Browns Cambridge is an expensive venue with a customer rating 3 out of 5\n\nMeaning representation: name[The Wrestlers], food[French], priceRange[less than \u00a320], customer rating[average], familyFriendly[no]\nNatural language: There is a restaurant The Wrestlers they serve French food and price rang is less than \u00a320. Although it isn't a family-friendly restaurant and the customer rating is only average\n\nMeaning representation: {meaning_representation}\nNatural language:"
-]
+{
+    "dataset":"helpful_base",
+    "instruction":"What are the names of some famous actors that started their careers on Broadway?",
+    "output":"Here are some famous actors who got their start on Broadway:\n\n- Hugh Jackman - He made his Broadway debut as Gaston in Beauty and the Beast in 1994. He went on to star in shows like The Boy From Oz and The Music Man.\n\n- Neil Patrick Harris - He starred in musicals like Rent and Cabaret early in his career in the late 1990s before becoming known for TV shows like Doogie Howser M.D. and How I Met Your Mother.\n\n- Audra McDonald - She has won a record 6 Tony Awards for shows like Carousel, Master Class, and Lady Day at Emerson's Bar & Grill. She's also been on TV shows like Private Practice. \n\n- Kristin Chenoweth - She made her Broadway debut in 1997's Steel Pier and is known for roles in Wicked and You're a Good Man, Charlie Brown. She later starred in TV shows like Pushing Daisies and Glee.\n\n- Jesse Tyler Ferguson - Before his role on Modern Family, he performed in Broadway shows like On the Town and The 25th Annual Putnam County Spelling Bee in the mid-2000s.\n\n- Cynthia Erivo - She broke out as Celie in the Broadway revival of The Color Purple. She went on to win a Tony and star in movies like Harriet.\n\n- Sutton Foster - She headlined shows like Thoroughly Modern Millie, Anything Goes, and Violet before becoming known for her TV work on Bunheads and Younger.",
+    "generator":"claude-2"
+  }
 ```
-This contains 5 prompt templates, where each template has a different in-context demonstration. You can also see that each template is an f-string, where the variable names (i.e., `{meaning_representation}`) correspond to the column name in the original dataset dataframe.
 
-
-### Evaluation 
-
-`src/evaluate/evaluate_text.py` is a python function which performs evaluation for summarization and data2text tasks. 
-
-## Setup
-
-Create a virtual environment and install the required packages.
+`alpaca/generate_predictions.py` generates predictions for Smoothie and baselines across multiple trials. 
 
 ```bash
-> conda env create -n "generative-ensembles" -f environment.yml # Create virtual environment
-> conda activate generative-ensembles # Activate virtual environment
-> chmod -R a+w . # Give write permissions to all users, if working on a cluster
-> pip install -r requirements.txt # Install requirements–NOT SURE IF THIS WORKS
+> python -m src.generate_predictions --n_trials 10 --k 5
 ```
+where `n_trials` is the number of trials to run, and `k` is the number of models to randomly select in each trial. For trial {i}, the following files are saved to `alpaca/algorithm_outputs/`:
 
-Clone the huggingface datasets repository. Note: the datasets repository is big so it may take up space.
+- `pick_random_{i}.json`: The predictions of the random-selection baseline. This corresponds to randomly selecting a model from the ensemble for each sample.
+- `smoothie_{i}.json`: The predictions of Smoothie using contextual weights.
+- `smoothie_independent_{i}.json`: The predictions of Smoothie using sample independent weights.
+
+Each JSON file is a list, where each entry is a dictionary. The fields across the three files are identical. Here is an example from `smoothie_1.json`:
+
+```json
+{
+        "instruction": "What are the names of some famous actors that started their careers on Broadway?",
+        "output": "\nTransitioning from the realm of Broadway theater to the bright lights of Hollywood is a dream for many stage actors. This transition not only marks a change in performance venue but often signifies a leap towards greater fame and a broader audience reach. Several renowned actors began their careers on Broadway before capturing the hearts of movie and television audiences worldwide. Here are some notable names:\n\n1. **Robert Redford** - Known for his leading roles in films like \"Butch Cassidy and the Sundance Kid\" and \"The Sting,\" Redford started his career on Broadway, winning his first Tony Award for his performance in \"Out of Our League\" in 1962.\n\n2. **Meryl Streep** - Often regarded as the greatest actress of her generation, Streep's Broadway debut was in the 1971 production of \"The Play What I Wrote.\" She has since garnered three Tony Awards for her work on Broadway.\n\n3. **Al Pacino** - A method actor known for his intense performances, Pacino made his Broadway debut in 1967 with \"Does a Tiger Wear a Necktie?\" His film career took off with \"The Godfather\" series.\n\n4. **Dustin Hoffman** - Hoffman's Broadway debut was in the 1960 play \"Eh?\" by Samuel Beckett. He later became famous for films such as \"Rain Man\" and \"All the President's Men.\"\n\n5. **Jennifer Lawrence** - While primarily recognized for her roles in films like \"The Hunger Games\" series and \"Silver Linings Playbook,\" Lawrence began her career on Broadway, notably appearing in \"Time Stands Still\" in 2010.\n\n6. **Liam Neeson** - Known for action roles in films like \"Taken\" and \"Star Wars,\" Neeson started his career in theater and made his Broadway debut in 1983 with \"Anthony and Cleopatra.\"\n\n7. **Hugh Jackman** - Before becoming globally recognized as Wolverine in the X-Men series, Jackman won a Tony Award for his role in the 2004 Broadway musical \"The Boy from Oz.\"\n\n8. **Scarlett Johansson** - While primarily known for her roles in Marvel films as Black Widow, Johansson has also performed on Broadway, notably in \"A View from the Bridge\" in 2010.\n\nThese actors' transitions from Broadway to Hollywood highlight the versatility and depth of talent that theater can nurture, setting a foundation for their successful careers in film and television.\n",
+        "generator": "smoothie_1", 
+        "models_in_trial": "['Meta-Llama-3-70B-Instruct', 'Storm-7B', 'FsfairX-Zephyr-Chat-v0.1', 'yi-large-preview', 'Nanbeige-Plus-Chat-v0.1']",
+        "selected_model": "Nanbeige-Plus-Chat-v0.1",
+        "smoothie_weights": "[0.1926124005325325, 0.1591649898806868, 0.14405633409506835, 0.21382343940368917, 0.29034283608802314]"
+    }
+```
+where:
+- `instruction`: The instruction for the sample.
+- `output`: The output text generated by the model.
+- `generator`: The name of the method that generated the output.
+- `models_in_trial`: The models that were used in the trial.
+- `selected_model`: The model that was selected by Smoothie.
+- `smoothie_weights`: The weights assigned to each model by Smoothie.
+
+To evaluate the predictions, run the following command:
 
 ```bash
-> huggingface-cli login
-> git clone https://huggingface.co/datasets/hazyresearch/generative_ensembles_data
+> cd alpaca
+> ./run_alpaca.sh
 ```
 
-## Common commands
-
-Launch notebook
-
-```bash
-> jupyter-lab --port 9999 --allow-root --no-browser # launch notebook
-```
+This script runs `alpaca_eval` on all the original model predictions, and all Smoothie/baseline predictions. The results are stored to `alpaca/leaderboard.csv`.
