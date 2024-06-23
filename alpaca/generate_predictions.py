@@ -25,18 +25,6 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 from src.console import console
 from src.constants import *
 from src.model import Smoothie
-from src.utils import (
-    check_results_file,
-    clean_generation,
-    construct_predictions_dir_path,
-    embed_individual_generations,
-    get_generation_output,
-    load_data_config,
-    load_hf_dataset,
-    load_hf_model,
-    load_prompts,
-    make_list_with_shape,
-)
 
 parser = argparse.ArgumentParser()
 parser.add_argument(

@@ -1,0 +1,1 @@
+Formulate a cohesive passage using the details provided in the set of knowledge graph triples.\n\n### Triples\nAbilene,_Texas | isPartOf | Texas\nTexas | capital | Austin,_Texas\nAbilene,_Texas | country | United_States\n\n### Text\nAbilene, Texas (capital: Austin) is located within the United States.\n\n### Triples\n{triples}\n\n### Text

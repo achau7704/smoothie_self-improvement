@@ -2,7 +2,6 @@ HF_CACHE_DIR = "../cache"
 
 # This dictionary contains the name of each test dataset, the subset to use, and the split to use.
 HF_TEST_DATASETS = {
-    "gsm8k": ("gsm8k", "main", "test"),
     "content_rephrasing": ("facebook/content_rephrasing", None, "test"),
     "cnn_dailymail": ("cnn_dailymail", "3.0.0", "test"),
     "definition_extraction": ("nguha/legalbench", "definition_extraction", "test"),
@@ -23,7 +22,6 @@ HF_TRAIN_DATASETS = {
     "cnn_dailymail": ("cnn_dailymail", "3.0.0", "train"),
     "e2e_nlg": ("e2e_nlg", None, "train"),
     "web_nlg": ("web_nlg", "release_v3.0_en", "train"),
-    "gsm8k": ("gsm8k", "main", "train"),
     "xsum": ("EdinburghNLP/xsum", None, "train"),
     "common_gen": ("allenai/common_gen", None, "train"),
     "trivia_qa": ("mandarjoshi/trivia_qa", "rc", "train[:10%]"),

@@ -1,8 +1,4 @@
 import numpy as np
-import torch
-from torch.nn.functional import softmax
-
-from src.utils import move_tensors_to_cpu, move_tensors_to_gpu
 
 class Smoothie:
     def __init__(self, n_voters, dim):

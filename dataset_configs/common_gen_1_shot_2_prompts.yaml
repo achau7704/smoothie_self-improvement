@@ -1,9 +1,0 @@
-dataset: common_gen
-prompt: common_gen_1_shot_2_prompts
-max_new_tokens: 50
-doc_key: concepts
-reference_key: target
-train_size: 250
-test_size: 1000
-metrics:
-  - rouge2

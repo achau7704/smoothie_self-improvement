@@ -1,24 +1,16 @@
 import argparse
-import json
 from pathlib import Path
 from typing import Dict
 
+import json
 import numpy as np
-import pandas as pd
-import torch
 import transformers
 import yaml
-from datasets import load_dataset
-from openai import OpenAI
-from sentence_transformers import SentenceTransformer
 from transformers import AutoModelForCausalLM, AutoTokenizer
 from fastembed import TextEmbedding
 
-from src.console import console
-from src.constants import HF_MODELS, HF_TEST_DATASETS, HF_TRAIN_DATASETS
+from src.constants import HF_MODELS
 from src.constants import HF_MODEL_MAX_LENGTHS
-
-
 
 transformers.logging.set_verbosity_error()
 
@@ -37,6 +29,20 @@ GROUP_TO_DATASET_CONFIGS = {
     ]
 }
 
+
+MODEL_GROUPS = {
+    "7b": ["mistral-7b", "llama-2-7b", "vicuna-7b", "gemma-7b", "nous-capybara"],
+    "3b": ["phi-2", "pythia-2.8b", "gemma-2b", "incite-3b", "dolly-3b"],
+}
+
+
+
+def check_args(args):
+    if not args.multi_model and not args.multi_prompt:
+        raise ValueError('Either --multi_model or --multi_prompt must be set.')
+    if args.multi_model and args.model_group is None:
+        raise ValueError('--multi_model is set but the --model_group is not specified.')
+
 def load_data_config(args: argparse.Namespace):
     """
     Load a data config yaml file.
@@ -44,36 +50,14 @@ def load_data_config(args: argparse.Namespace):
     Args:
         args (argparse.Namespace): arguments from the command line
     """
-
-    return yaml.load(Path(args.data_config_path).read_text(), Loader=yaml.FullLoader)
-
-
-def load_prompts(data_config: Dict, args: argparse.Namespace):
-    """
-    Load prompts from a json file.
-
-    Args:
-        data_config (dict): data config
-        args (argparse.Namespace): arguments from the command line
-
-    Returns:
-        train_prompts (list): list of prompts
-        test_prompts (list): list of prompts
-    """
-
-    train_prompts_fpath = Path(args.prompts_dir) / f"{data_config['prompt']}_train.json"
-    train_prompts = json.loads(train_prompts_fpath.read_text())
-
-    test_prompts_fpath = Path(args.prompts_dir) / f"{data_config['prompt']}_test.json"
-    test_prompts = json.loads(test_prompts_fpath.read_text())
-    return np.array(train_prompts), np.array(test_prompts)
+    return yaml.load(Path(args.dataset_config).read_text(), Loader=yaml.FullLoader)
 
 def construct_predictions_dir_path(data_config, args, model):
-    if args.model_group is not None:
-        results_dir = Path(args.results_dir) / data_config["prompt"]
+    if args.multi_model:
+        results_dir = Path(args.results_dir) / data_config["dataset"]
         results_dir.mkdir(exist_ok=True, parents=True)
     else:
-        results_dir = Path(args.results_dir) / data_config["prompt"] / model
+        results_dir = Path(args.results_dir) / data_config["dataset"] / model
         results_dir.mkdir(exist_ok=True, parents=True)
 
     return results_dir 
@@ -87,7 +71,7 @@ def construct_predictions_path(data_config: Dict, model: str, args: argparse.Nam
     """
     results_dir = construct_predictions_dir_path(data_config, args, model)
 
-    if args.model_group is None:
+    if args.multi_prompt:
         file_name = "individual_"
     else:
         file_name = f"{model}_"
@@ -111,7 +95,7 @@ def construct_smoothie_predictions_path(data_config: Dict, model: str, args: arg
         data_config (dict): data config
     """
     results_dir = construct_predictions_dir_path(data_config, args, model)
-    if args.model_group is not None:
+    if args.multi_model:
         output_fpath = str(results_dir) + f"/smoothie_{args.type}_{args.model_group}_"
     else:
         output_fpath = str(results_dir) + f"/smoothie_{args.type}_"
@@ -125,6 +109,9 @@ def construct_smoothie_predictions_path(data_config: Dict, model: str, args: arg
     if args.use_full_text_embeddings:
         output_fpath += f"full_embeddings_"
         no_flags = False 
+    if args.test:
+        output_fpath += "test_"
+        no_flags = False
     if no_flags:
         output_fpath += "new_"
     output_fpath += f"test.json"
@@ -133,7 +120,7 @@ def construct_smoothie_predictions_path(data_config: Dict, model: str, args: arg
 
 def construct_pick_random_predictions_path(data_config: Dict, model: str, args: argparse.Namespace):
     results_dir = construct_predictions_dir_path(data_config, args, model)
-    if args.model_group is not None:
+    if args.multi_model:
         output_fpath = results_dir / f"pick_random_{args.model_group}_test.json"
     else:
         output_fpath = results_dir / "pick_random_test.json"
@@ -142,13 +129,18 @@ def construct_pick_random_predictions_path(data_config: Dict, model: str, args: 
 
 def construct_labeled_oracle_predictions_path(data_config: Dict, model: str, args: argparse.Namespace):
     results_dir = construct_predictions_dir_path(data_config, args, model)
-    if args.model_group is not None:
+    if args.multi_model:
         output_fpath = results_dir / f"labeled_oracle_{args.model_group}_test.json"
     else:
         output_fpath = results_dir / "labeled_oracle_test.json"
     output_fpath = Path(output_fpath)
     return output_fpath 
 
+def construct_labeled_knn_predictions_path(data_config: Dict, model: str, args: argparse.Namespace):
+    results_dir = construct_predictions_dir_path(data_config, args, model)
+    output_fpath = results_dir / f"labeled_knn_{args.model_group}_test.json"
+    output_fpath = Path(output_fpath)
+    return output_fpath 
 
 def load_hf_model(model_name, args: argparse.Namespace):
     """
@@ -171,200 +163,6 @@ def load_hf_model(model_name, args: argparse.Namespace):
     )
     return model, tokenizer
 
-
-def make_list_with_shape(d1, d2):
-    """
-    Make a list with shape (d1, d2)
-    """
-    return [[None for _ in range(d2)] for _ in range(d1)]
-
-
-def prompt_openai(
-    api_key: str,
-    model: str,
-    prompt: str,
-    max_tokens: int,
-    temperature: float,
-    stop: str,
-):
-    """
-
-    Args:
-        api_key (str): OpenAI api key
-        model (str): model to use
-        prompt (str): prompt to be completed
-        max_tokens (int): Number of tokens to generate.
-        temperature (float): What sampling temperature to use.
-        stop (str): Sequence at which to stop generation.
-    """
-
-    client = OpenAI(api_key=api_key)
-    completion = client.chat.completions.create(
-        model=model,
-        messages=[
-            {"role": "system", "content": "You are a helpful assistant."},
-            {"role": "user", "content": prompt},
-        ],
-        max_tokens=max_tokens,
-        temperature=temperature,
-        stop=stop,
-    )
-    return completion.choices[0].message.content
-
-
-def get_latent_state(
-    prompt: str, model: AutoModelForCausalLM, tokenizer: AutoTokenizer, device: str
-):
-    """
-    Get the embedding of the last token of the prompt.
-
-    Args:
-        prompt (str): prompt to be completed
-        model (AutoModelForCausalLM): model to generate from
-        tokenizer (AutoTokenizer): tokenizer to use
-        device (str): device to use
-    """
-    input = tokenizer(prompt, return_tensors="pt")
-    input = {k: v.to(device) for k, v in input.items()}
-
-    output = model.generate(
-        **input,
-        output_hidden_states=True,  # Makes sure we can get hidden states
-    )
-    # Get last hidden states
-    last_hidden_state = outputs["hidden_states"][-1].detach()[
-        :, -1, :
-    ]  # shape is (batch_size, seq_len, hidden_size)
-
-    if "cuda" in device:
-        embedding = last_hidden_state.cpu().numpy()
-    else:
-        embedding = last_hidden_state.numpy()
-    return embedding
-
-
-def load_hf_dataset(
-    dataset_name: str, is_train: bool, n_samples: int, hf_cache_dir: str, doc_key: str,
-) -> pd.DataFrame:
-    """
-    Load a dataset from the HuggingFace datasets library. Returns dataset as pandas dataframe.
-
-    Args:
-        dataset_name (str): dataset name
-        is_train (bool): whether to load the train or test split
-        n_samples (int): number of samples to load
-        cache_dir (str): cache directory
-    """
-
-    if dataset_name in ["squad"]:
-        # These datasets don't have a train split, so we treat the "train" as the first half of the validation split
-        hf_url, subset, split = HF_TEST_DATASETS[dataset_name]
-
-        if subset is not None:
-            dataset = load_dataset(
-                hf_url,
-                subset,
-                split=split,
-                cache_dir=hf_cache_dir,
-                trust_remote_code=True,
-            )
-        else:
-            dataset = load_dataset(
-                hf_url, split=split, cache_dir=hf_cache_dir, trust_remote_code=True
-            )
-        # Convert the dataset to a pandas dataframe
-        data_df = dataset.to_pandas()
-
-        if is_train:
-            # Take the first half
-            data_df = data_df.iloc[: len(data_df) // 2]
-        else:
-            # Take the second half
-            data_df = data_df.iloc[len(data_df) // 2 :]
-    elif dataset_name in ["definition_extraction"]:
-        # For this, we take the first 100 as the train
-        hf_url, subset, split = HF_TEST_DATASETS[dataset_name]
-
-        if subset is not None:
-            dataset = load_dataset(
-                hf_url,
-                subset,
-                split=split,
-                cache_dir=hf_cache_dir,
-                trust_remote_code=True,
-            )
-        else:
-            dataset = load_dataset(
-                hf_url, split=split, cache_dir=hf_cache_dir, trust_remote_code=True
-            )
-        # Convert the dataset to a pandas dataframe
-        data_df = dataset.to_pandas()
-
-        if is_train:
-            data_df = data_df.iloc[:100]
-        else:
-            data_df = data_df.iloc[100:]
-
-    else:
-        if is_train:
-            hf_url, subset, split = HF_TRAIN_DATASETS[dataset_name]
-        else:
-            hf_url, subset, split = HF_TEST_DATASETS[dataset_name]
-
-        if subset is not None:
-            dataset = load_dataset(
-                hf_url,
-                subset,
-                split=split,
-                cache_dir=hf_cache_dir,
-                trust_remote_code=True,
-            )
-        else:
-            dataset = load_dataset(
-                hf_url, split=split, cache_dir=hf_cache_dir, trust_remote_code=True
-            )
-
-        # Convert the dataset to a pandas dataframe
-        data_df = dataset.to_pandas()
-
-    if dataset_name == "web_nlg":
-        data_df[doc_key] = data_df.apply(lambda x: "\n".join(x['modified_triple_sets']['mtriple_set'][0]), axis=1)
-
-    # If n_samples is greater than 0, only load a random number of n_samples examples.
-    if n_samples > 0:
-        n_samples = min(n_samples, len(data_df))
-        data_df = data_df.sample(n=n_samples, random_state=42)
-
-    return data_df
-
-
-def move_tensors_to_cpu(tuple_of_tuples):
-    result_tuple = tuple(
-        tuple(tensor.detach().to("cpu") for tensor in inner_tuple)
-        for inner_tuple in tuple_of_tuples
-    )
-    torch.cuda.empty_cache()  # Free up GPU memory
-    return result_tuple
-
-
-def move_tensors_to_gpu(tuple_of_tuples):
-    result_tuple = tuple(
-        tuple(tensor.detach().to("cuda") for tensor in inner_tuple)
-        for inner_tuple in tuple_of_tuples
-    )
-    torch.cuda.empty_cache()  # Free up GPU memory
-    return result_tuple
-
-
-def get_gpu_memory():
-    command = "nvidia-smi --query-gpu=memory.free --format=csv"
-    memory_free_info = (
-        sp.check_output(command.split()).decode("ascii").split("\n")[:-1][1:]
-    )
-    memory_free_values = [int(x.split()[0]) for i, x in enumerate(memory_free_info)]
-    return memory_free_values
-
-
 def get_generation_output(input, output):
     """
     By default, Huggingface returns the prompt + the generated text. This function
@@ -386,23 +184,6 @@ def clean_generations(generations: list, data_config: Dict):
     Cleans generations from the model output. This function is dataset specific. For instance, GSM8K answers span multiple lines, while most others only span one line.
     """
     return [clean_generation(generation) for generation in generations]
-
-
-def check_results_file(output_fpath: Path) -> bool:
-    """
-    Create the output file path and check if the file already exists.
-
-    Args:
-        output_fpath (Path): path to the output file
-
-    Returns:
-        True if the file exists, False otherwise
-    """
-    if output_fpath.exists():
-        return True
-    else:
-        return False
-
 
 def compute_embedding(embedding_model_name, text_inputs):
     if embedding_model_name in ["all-mpnet-base-v2"]:
@@ -443,16 +224,8 @@ def embed_individual_generations(
     embeddings = embeddings.reshape(n_samples, n_prompts, -1)
     return embeddings
 
-
-def get_input_text(data_df, data_config):
-    """
-    Returns input text for dataset.
-    """
-    return data_df[data_config["doc_key"]].tolist()
-
 def generate_per_sample_single_prompt(data_config, args, model_name, model, tokenizer, prompt, gen_params):
     sequence_texts = []
-    #print(f"PROMPT IS {prompt}")
     prompt_encodings = tokenizer(
         prompt,
         return_tensors="pt",
@@ -495,3 +268,39 @@ def generate_per_sample_multi_prompt(data_config, args, model_name, model, token
     # returns a list of n_prompts * n_generations outputs
     return sequence_texts
 
+def load_predictions(predictions_dir, split, args, for_selection=True):
+    """
+    Load predictions from a given split.
+
+    Args:
+    - predictions_dir (Path): The directory containing the predictions.
+    - split (str): The split to load predictions for.
+
+    Returns:
+    - list: The predictions for the split.
+    """
+    models = [args.model] if args.multi_prompt else MODEL_GROUPS[args.model_group]
+
+    predictions = []
+    for model in models:
+
+        if args.multi_prompt:
+            file_name = "individual_"
+        else:
+            file_name = f"{model}_"
+            
+        if args.n_generations > 1 and not for_selection:
+            file_name += f"{args.n_generations}_gens_"
+
+        fpath = predictions_dir / f"{file_name}{split}.json"
+        with open(fpath, "r") as f:
+            predictions.append(json.load(f)["generations"])
+
+
+    predictions = np.array(predictions)
+    if len(predictions.shape) == 3:
+        predictions = predictions.reshape((predictions.shape[1], predictions.shape[2]))
+    else:
+        predictions = predictions.T 
+    # shape should be (n_samples * n_generations, n_prompts or n_models)
+    return predictions

@@ -1,9 +1,0 @@
-dataset: web_nlg
-prompt: web_nlg_1_shot
-max_new_tokens: 50
-doc_key: triples
-reference_key: lex
-train_size: 100
-test_size: 1000
-metrics:
-  - rouge2

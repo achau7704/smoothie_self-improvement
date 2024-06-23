@@ -1,3 +1,0 @@
-[
-    "Transform the meaning representation into a sentence.\n\nMeaning representation: name[Alimentum], food[Chinese], priceRange[less than \u00a320], area[riverside], familyFriendly[yes]\nNatural language: Alimentum is a family-friendly Chinese food restaurant in the Riverside area where you can eat for low prices.\n\nMeaning representation: {meaning_representation}\nNatural language:"
-]

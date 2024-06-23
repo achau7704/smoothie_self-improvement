@@ -2,7 +2,7 @@
 This script implements the pick-random baseline, which randomly selects one of the individual generations to return.
 
 python -m src.pick_random_baseline \
-    --data_config_path dataset_configs/e2e_1_shot_3_prompts.yaml \
+    --dataset_config dataset_configs/e2e_1_shot_3_prompts.yaml \
     --model pythia-1b 
 """
 
@@ -16,39 +16,30 @@ import argparse
 import json
 
 import numpy as np
-import torch
-import yaml
 from tqdm.auto import tqdm
 
 from src.console import console
-from src.constants import HF_MODELS
-from src.multi_model.utils import load_predictions
-from src.utils import (check_results_file, construct_predictions_dir_path,
-                       get_generation_output, load_data_config, load_hf_model,
-                       load_prompts, make_list_with_shape,
-                       construct_pick_random_predictions_path)
+from src.utils import (load_data_config, check_args,
+                       construct_pick_random_predictions_path, load_predictions)
 
 parser = argparse.ArgumentParser()
 
 parser.add_argument("--model", type=str, help="LLM to use")
 parser.add_argument(
-    "--data_config_path",
+    "--dataset_config",
     type=str,
     help="Path to config file. This should be a yaml file",
 )
 parser.add_argument(
-    "--hf_cache_dir",
-    default="cache",
+    "--data_dir",
+    default="smoothie_data/datasets",
     type=str,
-    help="Directory to cache HF datasets to",
+    help="Directory with data files",
 )
 parser.add_argument(
     "--results_dir",
     type=str,
     help="Directory to save results to",
-)
-parser.add_argument(
-    "--prompts_dir", default="prompts", type=str, help="Directory to save prompts to"
 )
 parser.add_argument(
     "--redo",
@@ -59,12 +50,34 @@ parser.add_argument(
     "--model_group",
     help="The models to use for predictions",
 )
+parser.add_argument(
+    "--multi_prompt",
+    action="store_true",
+)
+parser.add_argument(
+    "--multi_model",
+    action="store_true",
+)
+parser.add_argument(
+    "--n_generations",
+    default=1,
+    type=int,
+    help="If not equal to 1, we replace k-nearest neighbors smoothing with computation over the n_generations per sample",
+)
+parser.add_argument(
+    "--seed",
+    default=42,
+    type=int,
+)
+
 
 def main(args):
+    check_args(args)
+    np.random.seed(args.seed)
     data_config = load_data_config(args)
     output_fpath = construct_pick_random_predictions_path(data_config, args.model, args)
     predictions_dir = output_fpath.parent
-    if check_results_file(output_fpath) and not args.redo:
+    if output_fpath.exists() and not args.redo:
         console.log(f"Results file already exists at {output_fpath}. Skipping.")
         return 
 

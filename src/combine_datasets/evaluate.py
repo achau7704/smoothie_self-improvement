@@ -20,7 +20,7 @@ from src.console import console
 from src.constants import *
 from src.evaluate.metrics import *
 from src.evaluate.scorer import *
-from src.utils import load_hf_dataset
+from src.data_utils import load_hf_dataset
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
@@ -85,9 +85,9 @@ def main(args):
         raise ValueError("Invalid task group")
 
     data_configs = []
-    for data_config_path in data_configs_fpaths:
+    for dataset_config in data_configs_fpaths:
         data_configs.append(
-            yaml.load(Path(data_config_path).read_text(), Loader=yaml.FullLoader)
+            yaml.load(Path(dataset_config).read_text(), Loader=yaml.FullLoader)
         )
 
     # We build giant dataframe with rows corresponding to samples and columns corresponding to models + references
@@ -96,12 +96,9 @@ def main(args):
     test_dataset_names = []
     test_references = []
     for data_config in data_configs:
-        test_df = load_hf_dataset(
-            dataset_name=data_config["dataset"],
-            is_train=False,
-            n_samples=data_config["test_size"],
+        _, test_df = load_hf_dataset(
+            config=data_config,
             hf_cache_dir=args.hf_cache_dir,
-            doc_key=data_config["doc_key"]
         )
         references = get_references(test_df, data_config)
         test_references.extend(references)

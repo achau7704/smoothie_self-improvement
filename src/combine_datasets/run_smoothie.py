@@ -79,9 +79,9 @@ def main(args):
         raise ValueError("Invalid task group")
 
     data_configs = []
-    for data_config_path in data_configs_fpaths:
+    for dataset_config in data_configs_fpaths:
         data_configs.append(
-            yaml.load(Path(data_config_path).read_text(), Loader=yaml.FullLoader)
+            yaml.load(Path(dataset_config).read_text(), Loader=yaml.FullLoader)
         )
 
     # Load test dataset

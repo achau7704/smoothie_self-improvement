@@ -1,0 +1,12 @@
+dataset: e2e_nlg
+multi_prompt_template: e2e_nlg_multi_prompt
+multi_model_prompt_template: e2e_nlg_multi_model
+max_new_tokens: 50
+doc_key: meaning_representation
+reference_key: human_reference
+train_size: 250
+test_size: 1000
+metrics:
+  - rouge1
+  - rouge2
+  - rougeL

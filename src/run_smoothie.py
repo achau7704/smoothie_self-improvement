@@ -12,24 +12,21 @@ warnings.filterwarnings(
 
 import argparse
 import json
-from pathlib import Path
 
 import numpy as np
 from sentence_transformers import SentenceTransformer
 from sklearn.neighbors import NearestNeighbors
-from tqdm.auto import tqdm
-from transformers import AutoModelForCausalLM, AutoTokenizer
+
+import pandas as pd
 
 from src.console import console
 from src.constants import *
 from src.model import Smoothie
-from src.multi_model.utils import load_predictions
-from src.utils import (check_results_file, clean_generation,
-                       construct_predictions_dir_path,
-                       embed_individual_generations, get_generation_output,
-                       get_input_text, load_data_config, load_hf_dataset,
-                       load_hf_model, load_prompts, make_list_with_shape,
-                       construct_smoothie_predictions_path)
+from src.data_utils import construct_processed_dataset_paths
+from src.utils import (embed_individual_generations,
+                       load_data_config,
+                       construct_smoothie_predictions_path,
+                       check_args, load_predictions)
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--model", type=str, help="LLM to use")
@@ -40,15 +37,15 @@ parser.add_argument(
     help="Device to use"
 )
 parser.add_argument(
-    "--data_config_path", 
+    "--dataset_config", 
     type=str, 
     help="Path to the data yaml config."
 )
 parser.add_argument(
-    "--hf_cache_dir",
-    default="cache",
+    "--data_dir",
+    default="smoothie_data/datasets",
     type=str,
-    help="Directory to cache HF datasets to",
+    help="Directory with data files",
 )
 parser.add_argument(
     "--results_dir",
@@ -91,33 +88,34 @@ parser.add_argument(
     "--model_group",
     help="The models to use for predictions if we are doing multi-model",
 )
+parser.add_argument(
+    "--multi_prompt",
+    action="store_true",
+)
+parser.add_argument(
+    "--multi_model",
+    action="store_true",
+)
 
 def main(args):
+    check_args(args)
     data_config = load_data_config(args)
     output_fpath = construct_smoothie_predictions_path(data_config, args.model, args)
     predictions_dir = output_fpath.parent
-    if check_results_file(output_fpath) and not args.redo:
+    if output_fpath.exists() and not args.redo:
         console.log(f"Results file already exists at {output_fpath}. Skipping.")
         return
 
-    test_inputs = get_input_text(load_hf_dataset(
-        dataset_name=data_config["dataset"],
-        is_train=False,
-        n_samples=data_config["test_size"],
-        hf_cache_dir=args.hf_cache_dir,
-        doc_key=data_config["doc_key"]
-    ), data_config)
-
+    _, test_dataset_path = construct_processed_dataset_paths(args)
+    test_dataset = pd.read_csv(test_dataset_path)
+    test_inputs = test_dataset['embedding_input']
 
     test_generations_for_smoothie = load_predictions(predictions_dir, "test", args, for_selection=False)
     test_generations_for_selection = load_predictions(predictions_dir, "test", args)
 
-
-
     model_name = "all-mpnet-base-v2"
     model = SentenceTransformer(model_name)
     console.log(f"Loaded embedding model: {model_name}")
-
 
     test_input_embeddings = model.encode(test_inputs)
 
@@ -142,7 +140,6 @@ def main(args):
     n_samples = int(len(smoothie_embeddings) / args.n_generations)
     n_voters = smoothie_embeddings.shape[1]
     embed_dim = smoothie_embeddings.shape[2]
-
     
     if args.type == "sample_dependent":
         if args.n_generations == 1:
@@ -151,7 +148,6 @@ def main(args):
             nbrs.fit(test_input_embeddings) # not the same as smoothie_embeddings! only kernel-smooth based on x similarity
 
             _, test_indices = nbrs.kneighbors(test_input_embeddings)
-            # test_indices = test_indices[:, 1:] # TODO: double check this
 
             smoothie_dataset_weights = []
             for sample_idx in range(n_samples):

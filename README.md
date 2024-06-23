@@ -1,4 +1,74 @@
-# generative-ensembles
+# smoothie
+
+This is the codebase for Smoothie. It allows you to both use Smoothie, and reproduce the experiments in the paper. 
+
+We store all datasets, predictions, and results from the paper in a Hugging Face dataset. You can download the dataset from HuggingFace by running the following command:
+
+```bash
+> huggingface-cli login --token $HUGGINGFACE_TOKEN --add-to-git-credential
+> git clone https://huggingface.co/datasets/hazyresearch/smoothie_data
+```
+
+## Environment
+
+```
+> conda create -n "smoothie" python=3.10 -y
+> conda activate smoothie
+> 
+```
+
+## Reproducing the paper
+
+### Datasets
+`dataset_configs` contains the configuration files for the datasets used in the paper. 
+
+For single task datasets, each configuration file contains the following fields:
+
+```yaml 
+# Name of the dataset
+dataset: squad
+# Name of the prompt template to use for the multi-prompt setting. There should be a file called squad_multi_prompt.json in prompt_templates. It should contain a list of f-strings.
+multi_prompt_template: squad_multi_prompt
+# Name of the prompt template to use for the multi-model setting. There should be a file called squad_multi_model.txt in prompt_templates. It should contain a single f-string.
+multi_model_prompt_template: squad_multi_model
+# Maximum number of new tokens to generate
+max_new_tokens: 20
+# Column name for the reference text
+reference_key: value
+# Train and test sizes
+train_size: 250
+test_size: 1000
+# Metrics to compute for evaluation
+metrics:
+  - squad_acc
+```
+
+For multi-task datasets, each configuration file contains the following fields:
+
+```yaml
+# Configuration for each task in the dataset
+tasks:
+  - squad.yaml # Configuration file for the first task
+  - trivia_qa.yaml # Configuration file for the second task
+  - definition_extraction.yaml # Configuration file for the third task
+```
+
+Train and test splits for datasets are saved to `$HF_DATASETS_DIR/datasets/` as `$config_filename_train.tsv` and `$config_filename_test.tsv`. Each tsv file contains the following columns:
+- `idx`: Unique identifier for the sample
+- `reference`: The gold reference text for the sample.
+- `embedding_input`: Text input used when computing lookup embeddings.
+- `multi_model_prompt`: The prompt used for the multi-model setting.
+- `multi_prompt_{i}`: The prompt used for the i-th prompt in the multi-prompt setting.
+
+
+To produce the train and test splits, run the following command:
+
+```bash
+> python -m src.make_dataset --dataset_config $config_filename
+```
+
+
+# OLD DOCUMENTATION
 
 This is the repository for the generative-ensembles project.
 

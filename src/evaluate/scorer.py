@@ -6,7 +6,7 @@ from typing import Dict, List
 import numpy as np
 
 from src.console import console
-from src.evaluate.metrics import METRIC_FUNCS, gsm8k_majority_vote
+from src.evaluate.metrics import METRIC_FUNCS
 from src.utils import clean_generations
 
 
@@ -119,7 +119,8 @@ class Scorer:
                 scores = metric_func(cleaned_generations, references)
                 scores.append(np.mean(scores))
             self.summary_scores[metric][method_name] = np.mean(scores)
-
+            self.sample_scores[metric][method_name] = scores
+            self.summary_scores[metric][method_name] = np.mean(scores)
         elif method_name.startswith("labeled_knn"):
             scores = []
             for trial_generations in generations:
@@ -128,6 +129,7 @@ class Scorer:
                 )
                 scores = metric_func(cleaned_generations, references)
                 scores.append(np.mean(scores))
+            self.sample_scores[metric][method_name] = scores
             self.summary_scores[metric][method_name] = np.mean(scores)
 
         elif method_name.startswith("pick_random"):
@@ -176,38 +178,6 @@ class Scorer:
             f"individual_{best_prompt_idx}"
         ]
 
-    def score_gsm8k_majority_vote(self, predictions_fpath: Path, references: List[str]):
-        """
-        Special function to compute majority vote for GSM8K.
-        """
-        assert (
-            "_test" in predictions_fpath.stem
-        ), f"Expected predictions file to contain '_test'. Got {predictions_fpath.stem}"
-        metric = "gsm8k_acc"
-        method_name = "majority_vote"
-
-        # Check if the method has already been scored
-        if (
-            method_name in self.summary_scores[metric]
-            and method_name in self.sample_scores[metric]
-        ) and not self.args.redo:
-            console.log(f"Skipping {method_name} ({metric}) because it already exists.")
-            return
-
-        predictions_dict = json.loads(predictions_fpath.read_text())
-        generations = predictions_dict["generations"]
-
-        # Construct clean generations
-        cleaned_generations = []
-        for sample_generations in generations:
-            cleaned_generations.append(
-                clean_generations(sample_generations, self.data_config)
-            )
-        cleaned_generations = np.array(cleaned_generations)
-        print(cleaned_generations.shape)
-        scores = gsm8k_majority_vote(cleaned_generations, references)
-        self.sample_scores[metric][method_name] = list(scores)
-        self.summary_scores[metric][method_name] = np.mean(scores)
 
     def save(self):
         """
@@ -217,46 +187,5 @@ class Scorer:
         self.sample_scores_fpath.write_text(json.dumps(self.sample_scores, indent=4))
 
 
-def get_web_nlg_references(reference_list):
-    """
-    The webnlg dataset has references in a different format than the other datasets. This function converts the references to the format used by the other datasets.
-    """
-    new_references = []
-    for reference in reference_list:
-        new_references.append([])
-        for text, comment in zip(reference["text"], reference["comment"]):
-            if comment == "good":
-                new_references[-1].append(text)
-    return new_references
-
-
-def get_gsm8k_references(reference_list):
-    """
-    The GSM8K dataset has references in a different format than the other datasets. This function converts the references to the format used by the other datasets.
-    """
-    new_references = []
-    for reference in reference_list:
-        reference = reference.split("####")[-1].strip()
-        new_references.append(reference)
-    return new_references
-
-
-def get_trivia_qa_references(reference_list):
-    """
-    The TriviaQA dataset has references in a different format than the other datasets. This function converts the references to the format used by the other datasets.
-    """
-    new_references = []
-    for reference in reference_list:
-        new_references.append(reference["normalized_aliases"])
-    return new_references
-
-
-def get_references(dataset, config):
-    if config["dataset"] == "web_nlg":
-        return get_web_nlg_references(dataset[config["reference_key"]].tolist())
-    elif config["dataset"] == "gsm8k":
-        return get_gsm8k_references(dataset[config["reference_key"]].tolist())
-    elif config["dataset"] == "trivia_qa":
-        return get_trivia_qa_references(dataset[config["reference_key"]].tolist())
-    else:
-        return dataset[config["reference_key"]].tolist()
+def get_references(dataset):
+    return dataset['reference'].tolist()

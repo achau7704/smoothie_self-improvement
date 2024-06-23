@@ -23,7 +23,8 @@ from src.constants import *
 from src.evaluate.metrics import *
 from src.evaluate.scorer import *
 from src.multi_model.utils import MODEL_GROUPS
-from src.utils import (get_input_text, load_hf_dataset)
+from src.utils import (get_input_text)
+from src.data_utils import load_hf_dataset
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
@@ -98,9 +99,9 @@ def main(args):
         raise ValueError("Invalid task group")
 
     data_configs = []
-    for data_config_path in data_configs_fpaths:
+    for dataset_config in data_configs_fpaths:
         data_configs.append(
-            yaml.load(Path(data_config_path).read_text(), Loader=yaml.FullLoader)
+            yaml.load(Path(dataset_config).read_text(), Loader=yaml.FullLoader)
         )
 
     # Get test generations and datasets

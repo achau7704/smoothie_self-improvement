@@ -213,76 +213,6 @@ def compute_gpt3_comparison(document, reference, summary1, summary2):
         return False
 
 
-def extract_gsm8k_answer(generation):
-    """
-    Extract the answer from a GSM-8K generation.
-
-    Args:
-        generation (str): Generated answer
-    """
-    generation = generation.split("\n\n")[0]
-    lines = generation.split("\n")
-    answer = None
-    for line in lines:
-        prefix = "The answer is"
-        line = line.strip()
-        if line.startswith(prefix):
-            answer = line[len(prefix) :].strip()
-            if len(answer.split()) > 1:
-                # In case the answer has units appended
-                answer = answer.split()[0]
-            if answer.startswith("$"):
-                # In case the answer is a monetary value
-                answer = answer[1:]
-    return str(answer)
-
-
-def gsm8k_acc(generations, references):
-    """
-    Compute GSM-8K score between generations and references.
-
-    Args:
-        generations (list): List of generated answers
-        references (list): List of reference sentences
-    """
-    answers = []
-    for generation in generations:
-        answer = extract_gsm8k_answer(generation)
-        answers.append(str(answer))
-
-    correct = []
-    for answer, reference in zip(answers, references):
-        if answer == str(reference):
-            correct.append(1)
-        else:
-            correct.append(0)
-    return correct
-
-
-def gsm8k_majority_vote(generations, references):
-    """
-    Compute GSM-8K majority vote between generations and references.
-    """
-    n_samples, n_prompts = generations.shape
-    majority_vote_predictions = []
-    for sample_idx in range(n_samples):
-        predictions = []
-        for prompt_idx in range(n_prompts):
-            generation = generations[sample_idx, prompt_idx]
-            answer = extract_gsm8k_answer(generation)
-            predictions.append(answer)
-        majority_vote = Counter(predictions).most_common(1)[0][0]
-        majority_vote_predictions.append(majority_vote)
-
-    correct = []
-    for answer, reference in zip(majority_vote_predictions, references):
-        if answer == str(reference):
-            correct.append(1)
-        else:
-            correct.append(0)
-    return correct
-
-
 def squad_acc(generations, references):
     correct = []
     for gen, ref in zip(generations, references):
@@ -321,8 +251,6 @@ METRIC_FUNCS = {
     "rougeL": compute_rougeL_score,
     "bert_score": compute_bert_score,
     "meteor": compute_meteor_score,
-    "gsm8k_acc": gsm8k_acc,
-    "gsm8k_majority_vote": gsm8k_majority_vote,
     "squad_acc": squad_acc,
     "trivia_qa_acc": trivia_qa_acc,
     "definition_extraction_acc": definition_extraction_acc,

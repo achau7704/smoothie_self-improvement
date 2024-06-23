@@ -11,30 +11,31 @@ warnings.filterwarnings(
 import argparse
 import json
 
+import pandas as pd
+
 import numpy as np
-from tqdm.auto import tqdm
 
 from src.console import console
 from src.evaluate.metrics import *
 from src.evaluate.scorer import *
-from src.multi_model.utils import load_predictions
-from src.utils import (check_results_file, construct_predictions_dir_path,
-                       load_data_config, load_hf_dataset,
-                       construct_labeled_oracle_predictions_path)
+from src.data_utils import construct_processed_dataset_paths
+from src.utils import (check_args,
+                       load_data_config,
+                       construct_labeled_oracle_predictions_path, load_predictions)
 
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--model", type=str, help="LLM to use")
 parser.add_argument(
-    "--data_config_path",
+    "--dataset_config",
     type=str,
     help="Path to config file. This should be a yaml file",
 )
 parser.add_argument(
-    "--hf_cache_dir",
-    default="cache",
+    "--data_dir",
+    default="smoothie_data/datasets",
     type=str,
-    help="Directory to cache HF datasets to",
+    help="Directory with data files",
 )
 parser.add_argument(
     "--results_dir",
@@ -62,6 +63,25 @@ parser.add_argument(
     "--model_group",
     help="The models to use for predictions",
 )
+parser.add_argument(
+    "--multi_prompt",
+    action="store_true",
+)
+parser.add_argument(
+    "--multi_model",
+    action="store_true",
+)
+parser.add_argument(
+    "--n_generations",
+    default=1,
+    type=int,
+    help="If not equal to 1, we replace k-nearest neighbors smoothing with computation over the n_generations per sample",
+)
+parser.add_argument(
+    "--seed",
+    default=42,
+    type=int,
+)
 
 TASK2METRIC = {
     "cnn_dailymail": METRIC_FUNCS["rouge2"],
@@ -74,11 +94,14 @@ TASK2METRIC = {
 }
 
 def main(args):
+    np.random.seed(args.seed)
+    console.log("Setting random seed.")
+    check_args(args)
     data_config = load_data_config(args)
     output_fpath = construct_labeled_oracle_predictions_path(data_config, args.model, args)
     predictions_dir = output_fpath.parent 
 
-    if check_results_file(output_fpath) and not args.redo:
+    if output_fpath.exists() and not args.redo:
         console.log(f"Results file already exists at {output_fpath}. Skipping.")
         return 
 
@@ -86,14 +109,10 @@ def main(args):
     test_generations = load_predictions(predictions_dir, "test", args)
     n_samples, n_prompts = train_generations.shape
 
-    train_dataset = load_hf_dataset(
-        dataset_name=data_config["dataset"],
-        is_train=False,
-        n_samples=data_config["test_size"],
-        hf_cache_dir=args.hf_cache_dir,
-        doc_key=data_config["doc_key"]
-    )
-    train_references = get_references(train_dataset, data_config)
+    train_data_path, _ = construct_processed_dataset_paths(args)
+    train_dataset = pd.read_csv(train_data_path)
+
+    train_references = get_references(train_dataset)
     if data_config['dataset'] not in TASK2METRIC:
         raise ValueError(f"Dataset {data_config['dataset']} not supported.")
 
