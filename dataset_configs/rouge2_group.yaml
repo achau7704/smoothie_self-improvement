@@ -1,0 +1,6 @@
+# This file contains the configuration for the rouge2 group of tasks
+tasks:
+  - dataset_configs/cnn_dailymail.yaml 
+  - dataset_configs/e2e_nlg.yaml
+  - dataset_configs/web_nlg.yaml
+  - dataset_configs/xsum.yaml
