@@ -19,8 +19,8 @@ import numpy as np
 from tqdm.auto import tqdm
 
 from src.console import console
-from src.utils import (load_data_config, check_args,
-                       construct_pick_random_predictions_path, load_predictions)
+from src.utils import (check_args, construct_pick_random_predictions_path,
+                       load_data_config, load_predictions)
 
 parser = argparse.ArgumentParser()
 
@@ -79,15 +79,15 @@ def main(args):
     predictions_dir = output_fpath.parent
     if output_fpath.exists() and not args.redo:
         console.log(f"Results file already exists at {output_fpath}. Skipping.")
-        return 
+        return
 
     test_generations = load_predictions(predictions_dir, "test", args)
-    
+
     sequence_texts = []
     for _ in range(10):
         # we do pick-random ten times to reduce noise
         trial_generations = []
-        for sample_idx in tqdm(range(len(test_generations))):
+        for sample_idx in range(len(test_generations)):
             # Select a random generation from the individual generations.
             generation_idx = np.random.randint(test_generations.shape[1])
             generation = test_generations[sample_idx][generation_idx]
@@ -99,6 +99,8 @@ def main(args):
         "generations": sequence_texts,
     }
     output_fpath.write_text(json.dumps(results, indent=4))
+    console.log(f"Results saved to {output_fpath}")
+
 
 if __name__ == "__main__":
     console.log("#" * 30)

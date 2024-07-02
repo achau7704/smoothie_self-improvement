@@ -1,1 +1,4 @@
-{context}\n\nQuestion: {question}\nAnswer:
+{context}
+
+Question: {question}
+Answer:

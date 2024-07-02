@@ -18,9 +18,9 @@ import yaml
 
 from src.console import console
 from src.constants import *
+from src.data_utils import load_hf_dataset
 from src.evaluate.metrics import *
 from src.evaluate.scorer import *
-from src.data_utils import load_hf_dataset
 
 parser = argparse.ArgumentParser()
 parser.add_argument(

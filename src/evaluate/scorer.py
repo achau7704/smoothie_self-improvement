@@ -178,14 +178,9 @@ class Scorer:
             f"individual_{best_prompt_idx}"
         ]
 
-
     def save(self):
         """
         Saves the scores to file.
         """
         self.summary_scores_fpath.write_text(json.dumps(self.summary_scores, indent=4))
         self.sample_scores_fpath.write_text(json.dumps(self.sample_scores, indent=4))
-
-
-def get_references(dataset):
-    return dataset['reference'].tolist()
