@@ -17,12 +17,13 @@ import yaml
 from sentence_transformers import SentenceTransformer
 from sklearn.neighbors import NearestNeighbors
 
+from src.combine_datasets.utils import (acc_tasks, compute_embedding,
+                                        rouge2_tasks)
 from src.console import console
 from src.model import Smoothie
 from src.multi_model.utils import MODEL_GROUPS
 from src.utils import (embed_individual_generations, get_input_text,
                        load_hf_dataset)
-from src.combine_datasets.utils import acc_tasks, rouge2_tasks, compute_embedding
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
@@ -66,9 +67,6 @@ parser.add_argument(
 parser.add_argument("--k", help="Nearest neighbors size", type=int, default=20)
 
 
-
-
-
 def main(args):
     # Load config
     if args.task_group == "acc_group":
@@ -92,7 +90,7 @@ def main(args):
             is_train=False,
             n_samples=data_config["test_size"],
             hf_cache_dir=args.hf_cache_dir,
-            doc_key=data_config["doc_key"]
+            doc_key=data_config["doc_key"],
         )
         test_datasets.append(test_df)
 
@@ -117,7 +115,6 @@ def main(args):
 
     ############### SMOOTHIE
     model_name = "all-mpnet-base-v2"
-    
 
     # Compute  embeddings of the test dataset
     test_dataset_embeddings = embedding_model.encode(text_inputs)

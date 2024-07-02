@@ -9,6 +9,3 @@ rouge2_tasks = [
     "dataset_configs/e2e_nlg_1_shot.yaml",
     "dataset_configs/web_nlg_1_shot.yaml",
 ]
-
-
-

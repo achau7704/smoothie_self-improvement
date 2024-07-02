@@ -2,19 +2,23 @@
 
 This is the codebase for Smoothie. It allows you to both use Smoothie, and reproduce the experiments in the paper. 
 
-We store all datasets, predictions, and results from the paper in a Hugging Face dataset. You can download the dataset from HuggingFace by running the following command:
+We store all datasets, predictions, and results from the paper in a HuggingFace dataset. You can download the dataset from HuggingFace by running the following command:
 
 ```bash
 > huggingface-cli login --token $HUGGINGFACE_TOKEN --add-to-git-credential
 > git clone https://huggingface.co/datasets/hazyresearch/smoothie_data
 ```
 
-## Environment
+where `$HUGGINGFACE_TOKEN` is your HuggingFace token.
+
+## Dependencies
+
+Install the dependencies using the following commands:
 
 ```
 > conda create -n "smoothie" python=3.10 -y
 > conda activate smoothie
-> 
+> pip install -r requirements.txt
 ```
 
 ## Reproducing the paper
@@ -31,8 +35,6 @@ multi_prompt_template: squad_multi_prompt
 multi_model_prompt_template: squad_multi_model
 # Maximum number of new tokens to generate
 max_new_tokens: 20
-# Column name for the reference text
-reference_key: value
 # Train and test sizes
 train_size: 250
 test_size: 1000
@@ -41,14 +43,15 @@ metrics:
   - squad_acc
 ```
 
-The script `src/make_dataset.py` downloads the datasets from Huggingface, creates the train and test splits, generates prompts for each row, and saves the resulting splits to disk. To create the train and test splits for a dataset, run the following command:
+The script `src/make_dataset.py` downloads the datasets from Huggingface, creates the train and test splits, generates prompts for each row, and saves the resulting splits to disk as jsonl files. To create the train and test splits for a dataset, run the following command:
 
 ```bash
 > python -m src.make_dataset --dataset_config $config_filename
 ```
 
-Train and test splits for datasets are saved to `$HF_DATASETS_DIR/datasets/` as `${config_filename}_train.csv` and `${config_filename}_test.csv`. Each csv file contains the following columns:
+Train and test splits for datasets are saved to `$HF_DATASETS_DIR/datasets/` as `${config_filename}_train.jsonl` and `${config_filename}_test.jsonl`. Each line corresponds to a sample, and contains the following fields:
 - `idx`: Unique identifier for the sample
+- `task_name`: The name of the task
 - `reference`: The gold reference text for the sample.
 - `embedding_input`: Text input used when computing lookup embeddings.
 - `multi_model_prompt`: The prompt used for the multi-model setting.
@@ -64,6 +67,8 @@ tasks:
   - dataset_configs/squad.yaml # Configuration file for the first task
   - dataset_configs/trivia_qa.yaml # Configuration file for the second task
   - dataset_configs/definition_extraction.yaml # Configuration file for the third task
+# Maximum number of new tokens to generate
+max_new_tokens: 40
 ```
 
 We use the script `src/make_multi_task_dataset.py` to create the train and test splits for multi-task datasets as well:
@@ -74,12 +79,14 @@ We use the script `src/make_multi_task_dataset.py` to create the train and test 
 
 Train and test splits for datasets are also saved to `$HF_DATASETS_DIR/datasets/` as `${config_filename}_train.csv` and `${config_filename}_test.csv`. Each csv file contains the following columns:
 - `idx`: Unique identifier for the sample
-- `task`: The task that the sample belongs to
+- `task_name`: The name of the task
 - `reference`: The gold reference text for the sample.
 - `embedding_input`: Text input used when computing lookup embeddings.
 - `multi_model_prompt`: The prompt used for the multi-model setting.
 
-Note that compared to single-task datasets, multi-task datasets do not contain the `multi_prompt_{i}` columns, and instead contain a `task` column.
+Note that compared to single-task datasets, multi-task datasets do not contain the `multi_prompt_{i}` columns.
+
+### Multi-model experiments
 
 ### Alpaca results
 

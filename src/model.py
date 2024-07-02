@@ -1,5 +1,6 @@
 import numpy as np
 
+
 class Smoothie:
     def __init__(self, n_voters, dim):
         self.n_voters = n_voters

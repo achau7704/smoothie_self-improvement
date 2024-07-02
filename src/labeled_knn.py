@@ -11,18 +11,18 @@ warnings.filterwarnings(
 import argparse
 import json
 
-import pandas as pd
 import numpy as np
+import pandas as pd
 from sentence_transformers import SentenceTransformer
 from sklearn.neighbors import NearestNeighbors
 from tqdm.auto import tqdm
 
 from src.console import console
+from src.data_utils import construct_processed_dataset_paths
 from src.evaluate.metrics import *
 from src.evaluate.scorer import *
-from src.data_utils import construct_processed_dataset_paths
-from src.utils import (load_data_config,
-                       construct_labeled_knn_predictions_path, load_predictions)
+from src.utils import (construct_labeled_knn_predictions_path,
+                       load_data_config, load_predictions)
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
@@ -91,8 +91,9 @@ TASK2METRIC = {
     "squad": METRIC_FUNCS["squad_acc"],
     "trivia_qa": METRIC_FUNCS["trivia_qa_acc"],
     "web_nlg": METRIC_FUNCS["rouge2"],
-    "xsum": METRIC_FUNCS["rouge2"]
+    "xsum": METRIC_FUNCS["rouge2"],
 }
+
 
 def main(args):
     np.random.seed(args.seed)
@@ -124,13 +125,13 @@ def main(args):
     model_name = "all-mpnet-base-v2"
     model = SentenceTransformer(model_name)
     console.log(f"Loaded embedding model: {model_name}")
-    train_dataset_embeddings = model.encode(train_dataset['embedding_input'])
-    test_dataset_embeddings = model.encode(test_dataset['embedding_input'])
+    train_dataset_embeddings = model.encode(train_dataset["embedding_input"])
+    test_dataset_embeddings = model.encode(test_dataset["embedding_input"])
 
     # Evaluate train generations
-    if data_config['dataset'] not in TASK2METRIC:
+    if data_config["dataset"] not in TASK2METRIC:
         raise ValueError(f"Dataset {data_config['dataset']} not supported.")
-    metric_func = TASK2METRIC[data_config['dataset']]
+    metric_func = TASK2METRIC[data_config["dataset"]]
 
     generations = []  # Final generations. Shape: (10, n_test)
     for _ in tqdm(range(10)):

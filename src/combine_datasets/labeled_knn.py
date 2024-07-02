@@ -20,11 +20,11 @@ from sklearn.neighbors import NearestNeighbors
 
 from src.console import console
 from src.constants import *
+from src.data_utils import load_hf_dataset
 from src.evaluate.metrics import *
 from src.evaluate.scorer import *
 from src.multi_model.utils import MODEL_GROUPS
-from src.utils import (get_input_text)
-from src.data_utils import load_hf_dataset
+from src.utils import get_input_text
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
@@ -113,7 +113,7 @@ def main(args):
             is_train=False,
             n_samples=data_config["test_size"],
             hf_cache_dir=args.hf_cache_dir,
-            doc_key=data_config["doc_key"]
+            doc_key=data_config["doc_key"],
         )
         test_datasets.append(test_df)
         test_texts.extend(get_input_text(test_df, data_config))
@@ -143,7 +143,7 @@ def main(args):
             is_train=True,
             n_samples=data_config["train_size"],
             hf_cache_dir=args.hf_cache_dir,
-            doc_key=data_config["doc_key"]
+            doc_key=data_config["doc_key"],
         )
         references = get_references(train_df, data_config)
         train_references.extend(references)

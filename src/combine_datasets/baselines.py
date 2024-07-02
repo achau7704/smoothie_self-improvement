@@ -17,7 +17,7 @@ import yaml
 
 from src.console import console
 from src.multi_model.utils import MODEL_GROUPS
-from src.utils import (get_input_text, load_hf_dataset)
+from src.utils import get_input_text, load_hf_dataset
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
@@ -90,7 +90,7 @@ def main(args):
             is_train=False,
             n_samples=data_config["test_size"],
             hf_cache_dir=args.hf_cache_dir,
-            doc_key=data_config["doc_key"]
+            doc_key=data_config["doc_key"],
         )
         test_datasets.append(test_df)
 
