@@ -1,5 +1,5 @@
 """
-This script implements Smoothie. There are several configurations: 
+This script implements Smoothie. 
 """
 
 import warnings

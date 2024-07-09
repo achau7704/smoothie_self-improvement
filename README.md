@@ -21,9 +21,20 @@ Install the dependencies using the following commands:
 > pip install -r requirements.txt
 ```
 
+## Using Smoothie
+
+In `tutorials/tutorial.ipynb`, we walk through how to use the Smoothie algorithm. The tutorial can be easily adapted for your use case given that you provide a .jsonl file with the dataset inputs, and several json files each containing a different model/prompt's generations.
+
+If interested in the mathematical derivation of Smoothie, check out `tutorials/algorithm.ipynb`.
+
+
 ## Reproducing the paper
 
-### Single-task datasets
+Using Smoothie can be broken down into four steps: 1) formatting a dataset (either single-task or multi-task) 2) getting multiple generations per sample in the dataset (whether via multiple prompts or multiple LLMs) 3) running a routing method to determine the best generation per sample, and 4) evaluating the selected generations.
+
+### Formatting datasets
+
+#### Single-task datasets
 `dataset_configs` contains the configuration files for all single-task datasets. Each configuration file contains the following fields:
 
 ```yaml 
@@ -86,7 +97,114 @@ Train and test splits for datasets are also saved to `$HF_DATASETS_DIR/datasets/
 
 Note that compared to single-task datasets, multi-task datasets do not contain the `multi_prompt_{i}` columns.
 
-### Multi-model experiments
+### Producing generations 
+
+Once a dataset has been created, we need to produce the generations for this dataset. Given a list of models (multi-model) or a list of prompts (multi-prompt), we create individual json files containing the generations for each model/prompt. Note that all valid models are defined in `src/constants.py`.
+
+#### Multi-model
+
+In the multi-model setting, `src/get_generations.py` is called with the `--multi_model` flag, and a group of models is specified with `--model_group`. Currently, we have a `3b` and `7b` model group defined in `MODEL_GROUPS` in `src/utils.py`. 
+
+```bash
+> python -m src.get_generations \
+    --dataset_config $config_filename \
+    --model_group $model_group \
+    --results_dir $RESULTS_DIR \
+    --multi_model
+```
+
+For each `model_name` in the `model_group`, train and test generations are saved to `$RESULTS_DIR/${config_filename}/${model_group}/${model_name}_train.json` and `$RESULTS_DIR/${config_filename}/${model_group}/${model_name}_test.json`, respectively.
+
+#### Multi-prompt
+
+In the multi-prompt setting, `src/get_generations.py` is called with the `--multi_prompt` flag, and the model to use is specified with `--model`, which takes as argument any of the models in `HF_MODELS` in `src/constants.py`.
+
+```bash
+> python -m src.get_generations \
+    --dataset_config $config_filename \
+    --model $model \
+    --results_dir $RESULTS_DIR \
+    --multi_prompt
+```
+
+Train and test generations are saved to `$RESULTS_DIR/${config_filename}/${model}/individual_train.json` and `$RESULTS_DIR/${config_filename}/${model}/individual_test.json`, respectively. Since we store the generations for multiple prompts in one file, the generations are stored as a list of lists (n_samples x n_prompts).
+
+### Routing methods
+
+Once individual model/prompt generations are created, we have several methods that we can use to select a generation per sample:
+* Smoothie (`src/run_smoothie.py`): our main algorithm. `--type` accepts as argument either `sample_dependent` or `sample_independent`, which controls if we use the dependent (different model/prompt per sample) or independent (one model/prompt for the entire dataset) version of Smoothie. In Smoothie-dependent, `--k` is the parameter for the k-nearest neighbors per test sample used as input to Smoothie to determine what the sample should be routed to.
+  ```bash
+  > python -m src.run_smoothie \
+    --dataset_config $config_filename \ 
+    --model_group $model_group \
+    --results_dir $RESULTS_DIR \
+    --multi_model \
+    --type sample_dependent \
+    --k $k \ 
+  ```
+
+  Outputs are saved to `$RESULTS_DIR/${config_filename}/${model_group}/smoothie_${type}_${model_group}_${k}_test.json`, which contains both the selected generation per sample as well as the Smoothie weights on each generation per sample.
+
+
+* Pick Random (`src/pick_random_baseline.py`): this approach selects a random generation for each sample. The procedure is repeated 10 times to reduce noise. 
+  ```bash
+  > python -m src.pick_random_baseline \
+    --dataset_config $config_filename \ 
+    --model_group $model_group \
+    --results_dir $RESULTS_DIR \
+    --multi_model \
+  ```
+
+  Outputs are saved to `$RESULTS_DIR/${config_filename}/${model_group}/pick_random_${model_group}_test.json`, which contains a list of (n_trials, n_samples) selected generations.
+  
+* Labeled Oracle (`src/labeled_oracle.py`): this approach uses a subset of the train split of generations to determine which model/prompt is the best. The procedure is repeated 10 times to reduce noise.
+  ```bash
+  > python -m src.labeled_oracle \
+    --dataset_config $config_filename \ 
+    --model_group $model_group \
+    --results_dir $RESULTS_DIR \
+    --multi_model \
+  ```
+
+  Outputs are saved to `$RESULTS_DIR/${config_filename}/${model_group}/labeled_oracle_${model_group}_test.json`, which contains a list of (n_trials, n_samples) selected generations.
+
+* Labeled KNN (`src/labeled_knn.py`): for each test sample, this approach examines the k nearest neighbors in a subset of the training dataset and routes the test sample to the model/prompt that does best on a majority of the neighbors. The procedure is repeated 10 times to reduce noise, and k is set to 20. 
+  ```bash
+  > python -m src.labeled_knn \
+    --dataset_config $config_filename \ 
+    --model_group $model_group \
+    --results_dir $RESULTS_DIR \
+    --multi_model \
+  ```
+
+  Outputs are saved to `$RESULTS_DIR/${config_filename}/${model_group}/labeled_knn_${model_group}_test.json`, which contains a list of (n_trials, n_samples) selected generations. Labeled KNN is not supported for the multi-prompt version yet.
+
+
+For the multi-prompt versions, replace `--model_group $model_group` with `--model $model`, `--multi_model` with `--multi_prompt`, and set `$RESULTS_DIR` accordingly. Outputs are saved to `$RESULTS_DIR/${config_filename}/${model}/${method_name}_test.json`. 
+
+### Evaluation
+
+We use `src/evaluate/evaluate.py` to compare each method's selected generations to the reference generations. Depending on the task, we use a different evaluation metric (see `MULTI_MODEL_TASK2METRIC` in `src/evaluate/metrics.py`). For the pick random, labeled oracle, and labeled KNN methods, we average the performance over the trials.  
+
+To evaluate in the multi-model setting, run:
+```bash
+python -m src.evaluate.evaluate \
+    --dataset_config $dataset_config \
+    --model_group $model_group \
+    --multi_model \
+    --results_dir $RESULTS_DIR
+```
+
+To evaluate in the multi-prompt setting, run:
+```bash
+python -m src.evaluate.evaluate \
+    --dataset_config $dataset_config \
+    --model $model \
+    --multi_prompt \
+    --results_dir $RESULTS_DIR
+```
+
+This will output a file named `scores.json` in the folder with all the generations and routing methods' outputs.
 
 ### Alpaca results
 
@@ -140,3 +258,14 @@ To evaluate the predictions, run the following command:
 ```
 
 This script runs `alpaca_eval` on all the original model predictions, and all Smoothie/baseline predictions. The results are stored to `alpaca/leaderboard.csv`.
+
+
+## To run on new datasets/prompts/models
+
+To add a new dataset, add it to `HF_TEST_DATASETS` and `HF_TRAIN_DATASETS` in `src/constants.py`, and specify any particular details for loading in `src/data_utils.py`. 
+To add corresponding prompts, go to `prompt_templates/` and add `${config_filename}_multi_model.txt` in the multi-model setting, and add `${config_filename}_multi_prompt.txt` in the multi-prompt setting.
+Then, create a new .yaml file in `dataset_configs` with the dataset name and the prompt filenames above. 
+
+To add a new model, add it to `HF_MODELS` in `src/constants.py`. 
+
+

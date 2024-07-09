@@ -20,9 +20,8 @@ from tqdm.auto import tqdm
 from src.console import console
 from src.data_utils import construct_processed_dataset_paths
 from src.evaluate.metrics import *
-from src.evaluate.scorer import *
-from src.utils import (construct_labeled_knn_predictions_path,
-                       load_data_config, load_predictions)
+from src.utils import (construct_labeled_knn_predictions_path, clean_generations,
+                       load_data_config, load_predictions, get_references)
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
@@ -52,16 +51,10 @@ parser.add_argument(
     help="The models to use for predictions",
 )
 parser.add_argument(
-    "--label_train_n_trials",
-    default=10,
-    type=int,
-    help="Number of trials to run for train oracle sampling method.",
-)
-parser.add_argument(
     "--label_train_sample_size",
     default=50,
     type=int,
-    help="Number of trials to run for train oracle sampling method.",
+    help="Number of trials to run for train knn sampling method.",
 )
 parser.add_argument(
     "--multi_prompt",

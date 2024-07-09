@@ -13,29 +13,19 @@ from src.constants import HF_MODEL_MAX_LENGTHS, HF_MODELS
 
 transformers.logging.set_verbosity_error()
 
-
-GROUP_TO_DATASET_CONFIGS = {
-    "acc_group": [
-        "dataset_configs/squad.yaml",
-        "dataset_configs/trivia_qa_knowledge.yaml",
-        "dataset_configs/definition_extraction.yaml",
-    ],
-    "rouge2_group": [
-        "dataset_configs/cnn_dailymail_0_shot.yaml",
-        "dataset_configs/xsum_0_shot.yaml",
-        "dataset_configs/e2e_nlg_1_shot.yaml",
-        "dataset_configs/web_nlg_1_shot.yaml",
-    ],
-}
-
-
 MODEL_GROUPS = {
     "7b": ["mistral-7b", "llama-2-7b", "vicuna-7b", "gemma-7b", "nous-capybara"],
     "3b": ["pythia-2.8b", "gemma-2b", "incite-3b", "dolly-3b"]
 }
 
 
-def check_args(args):
+def check_args(args: argparse.Namespace):
+    """
+    Checks that multi-prompt or multi-model arguments are not conflicting.
+
+    Args:
+        args (argparse.Namespace): arguments from the command line    
+    """
     if not args.multi_model and not args.multi_prompt:
         raise ValueError("Either --multi_model or --multi_prompt must be set.")
     if args.multi_model and args.model_group is None:
@@ -52,7 +42,15 @@ def load_data_config(args: argparse.Namespace):
     return yaml.load(Path(args.dataset_config).read_text(), Loader=yaml.FullLoader)
 
 
-def construct_predictions_dir_path(data_config, args, model):
+def construct_predictions_dir_path(data_config: Dict, args: argparse.Namespace, model: str):
+    """
+    Construct the directory path where train and test predictions will be saved.
+
+    Args:
+        data_config (dict): data config
+        args (argparse.Namespace): arguments from the command line
+        model (str): model name
+    """
     if args.multi_model:
         results_dir = Path(args.results_dir) / data_config["dataset"] / args.model_group
         results_dir.mkdir(exist_ok=True, parents=True)
@@ -68,8 +66,9 @@ def construct_predictions_path(data_config: Dict, model: str, args: argparse.Nam
     Construct the paths where train and test predictions will be saved.
 
     Args:
-        args (argparse.Namespace): arguments from the command line
         data_config (dict): data config
+        model (str): model name
+        args (argparse.Namespace): arguments from the command line
     """
     results_dir = construct_predictions_dir_path(data_config, args, model)
 
@@ -93,11 +92,12 @@ def construct_smoothie_predictions_path(
     data_config: Dict, model: str, args: argparse.Namespace
 ):
     """
-    Construct the paths where train and test predictions will be saved.
+    Construct the paths where train and test predictions will be saved for Smoothie.
 
     Args:
-        args (argparse.Namespace): arguments from the command line
         data_config (dict): data config
+        model (str): model name
+        args (argparse.Namespace): arguments from the command line
     """
     results_dir = construct_predictions_dir_path(data_config, args, model)
     if args.multi_model:
@@ -120,6 +120,14 @@ def construct_smoothie_predictions_path(
 def construct_pick_random_predictions_path(
     data_config: Dict, model: str, args: argparse.Namespace
 ):
+    """
+    Construct the paths where train and test predictions will be saved for the pick random baseline.
+
+    Args:
+        data_config (dict): data config
+        model (str): model name
+        args (argparse.Namespace): arguments from the command line
+    """
     results_dir = construct_predictions_dir_path(data_config, args, model)
     if args.multi_model:
         output_fpath = results_dir / f"pick_random_{args.model_group}_test.json"
@@ -132,6 +140,15 @@ def construct_pick_random_predictions_path(
 def construct_labeled_oracle_predictions_path(
     data_config: Dict, model: str, args: argparse.Namespace
 ):
+    """
+    Construct the paths where train and test predictions will be saved for the labeled oracle baseline.
+
+    Args:
+        data_config (dict): data config
+        model (str): model name
+        args (argparse.Namespace): arguments from the command line
+    """
+
     results_dir = construct_predictions_dir_path(data_config, args, model)
     if args.multi_model:
         output_fpath = results_dir / f"labeled_oracle_{args.model_group}_test.json"
@@ -144,17 +161,27 @@ def construct_labeled_oracle_predictions_path(
 def construct_labeled_knn_predictions_path(
     data_config: Dict, model: str, args: argparse.Namespace
 ):
+    """
+    Construct the paths where train and test predictions will be saved for the labeled knn baseline.
+
+    Args:
+        data_config (dict): data config
+        model (str): model name
+        args (argparse.Namespace): arguments from the command line
+    """
+
     results_dir = construct_predictions_dir_path(data_config, args, model)
     output_fpath = results_dir / f"labeled_knn_{args.model_group}_test.json"
     output_fpath = Path(output_fpath)
     return output_fpath
 
 
-def load_hf_model(model_name, args: argparse.Namespace):
+def load_hf_model(model_name: str, args: argparse.Namespace):
     """
     Load a HuggingFace model and tokenizer.
 
     Args:
+        model_name (str): model name
         args (argparse.Namespace): arguments from the command line
     """
     model = AutoModelForCausalLM.from_pretrained(
@@ -195,19 +222,19 @@ def clean_generation(generation: str):
 
 def clean_generations(generations: list):
     """
-    Cleans generations from the model output. This function is dataset specific. For instance, GSM8K answers span multiple lines, while most others only span one line.
+    Cleans generations from the model output.
     """
     return [clean_generation(generation) for generation in generations]
 
 
-def compute_embedding(embedding_model_name, text_inputs):
+def compute_embedding(embedding_model_name: str, text_inputs: np.ndarray):
+    """
+    Embeds sample inputs according to some embedding model.
+    """
     if embedding_model_name in ["all-mpnet-base-v2"]:
         embedding_model = TextEmbedding(
             model_name="BAAI/bge-small-en-v1.5", providers=["CUDAExecutionProvider"]
         )
-        embeddings_generator = embedding_model.embed(
-            text_inputs
-        )  # reminder this is a generator
         embeddings_list = list(embedding_model.embed(text_inputs))
         return np.array(embeddings_list)
     else:
@@ -239,8 +266,13 @@ def embed_individual_generations(individual_generations: np.ndarray, model_name:
 
 
 def generate_per_sample_single_prompt(
-    data_config, args, model_name, model, tokenizer, prompt, gen_params
+    data_config: Dict, args: argparse.Namespace, model_name: str, 
+    model, tokenizer, prompt, gen_params
 ):
+    """
+    Returns a generation for a single sample with a single prompt. If args.n_generations > 1, returns a list.
+    """
+
     sequence_texts = []
     prompt_encodings = tokenizer(
         prompt,
@@ -272,6 +304,9 @@ def generate_per_sample_single_prompt(
 def generate_per_sample_multi_prompt(
     data_config, args, model_name, model, tokenizer, prompts, gen_params
 ):
+    """
+    Returns a list of generations corresponding to multiple prompts for a single sample.
+    """
     sequence_texts = (
         []
     )  # will be a list: p1 output1, p1 output2, ..., p2 output1, p2 output2, ...
@@ -297,7 +332,9 @@ def load_predictions(predictions_dir, split, args, for_selection=True):
     Args:
     - predictions_dir (Path): The directory containing the predictions.
     - split (str): The split to load predictions for.
-
+    - args: arguments from the command line 
+    - for_selection: if set to false and args.n_generations > 1, loads predictions file that contains multiple generations per sample per prompt/model.
+    
     Returns:
     - list: The predictions for the split.
     """

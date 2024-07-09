@@ -16,7 +16,6 @@ import jsonlines
 from src.console import console
 from src.data_utils import construct_processed_dataset_paths
 from src.evaluate.metrics import METRIC_FUNCS, MULTI_MODEL_TASK2METRIC
-# from src.evaluate.scorer import *
 from src.utils import (check_args, clean_generations,
                        construct_predictions_dir_path, get_references,
                        load_data_config)

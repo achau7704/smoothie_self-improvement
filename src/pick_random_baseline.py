@@ -1,9 +1,5 @@
 """
 This script implements the pick-random baseline, which randomly selects one of the individual generations to return.
-
-python -m src.pick_random_baseline \
-    --dataset_config dataset_configs/e2e_1_shot_3_prompts.yaml \
-    --model pythia-1b 
 """
 
 import warnings
