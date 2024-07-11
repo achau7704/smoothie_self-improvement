@@ -128,9 +128,8 @@ def generate_predictions(
             sequence_texts.extend(texts)  # one big list
 
         else:
-            raise NotImplementedError("This is not implemented yet.")
-            # IGNORE BELOW - INCORRECT
-            prompts = row[4:].values
+            mp_keys = sorted([k for k in sample.keys() if "multi_prompt" in k])
+            prompts = [sample[k] for k in mp_keys]
             texts = generate_per_sample_multi_prompt(
                 data_config, args, model_name, model, tokenizer, prompts, gen_params
             )

@@ -1,3 +1,8 @@
+# TODO: Remove unused imports
+# TODO: Remove unused functions
+# TODO: Check comments for each function
+# TODO: Add type hints to functions
+
 import argparse
 import json
 from pathlib import Path
@@ -13,6 +18,8 @@ from src.constants import HF_MODEL_MAX_LENGTHS, HF_MODELS
 
 transformers.logging.set_verbosity_error()
 
+
+# Model groups for multi-model experiments
 MODEL_GROUPS = {
     "7b": ["mistral-7b", "llama-2-7b", "vicuna-7b", "gemma-7b", "nous-capybara"],
     "3b": ["pythia-2.8b", "gemma-2b", "incite-3b", "dolly-3b"]
@@ -24,7 +31,7 @@ def check_args(args: argparse.Namespace):
     Checks that multi-prompt or multi-model arguments are not conflicting.
 
     Args:
-        args (argparse.Namespace): arguments from the command line    
+        args (argparse.Namespace): arguments from the command line
     """
     if not args.multi_model and not args.multi_prompt:
         raise ValueError("Either --multi_model or --multi_prompt must be set.")
@@ -32,17 +39,20 @@ def check_args(args: argparse.Namespace):
         raise ValueError("--multi_model is set but the --model_group is not specified.")
 
 
-def load_data_config(args: argparse.Namespace):
+def load_data_config(args: argparse.Namespace) -> Dict:
     """
     Load a data config yaml file.
 
     Args:
         args (argparse.Namespace): arguments from the command line
+    
+    Returns:
+        dict: the data config
     """
     return yaml.load(Path(args.dataset_config).read_text(), Loader=yaml.FullLoader)
 
 
-def construct_predictions_dir_path(data_config: Dict, args: argparse.Namespace, model: str):
+def construct_predictions_dir_path(data_config: Dict, args: argparse.Namespace, model: str) -> Path:
     """
     Construct the directory path where train and test predictions will be saved.
 
@@ -50,6 +60,9 @@ def construct_predictions_dir_path(data_config: Dict, args: argparse.Namespace, 
         data_config (dict): data config
         args (argparse.Namespace): arguments from the command line
         model (str): model name
+    
+    Returns:
+        Path: the directory path
     """
     if args.multi_model:
         results_dir = Path(args.results_dir) / data_config["dataset"] / args.model_group
@@ -61,7 +74,7 @@ def construct_predictions_dir_path(data_config: Dict, args: argparse.Namespace, 
     return results_dir
 
 
-def construct_predictions_path(data_config: Dict, model: str, args: argparse.Namespace):
+def construct_predictions_path(data_config: Dict, model: str, args: argparse.Namespace) -> Tuple[Path, Path]:
     """
     Construct the paths where train and test predictions will be saved.
 
@@ -69,6 +82,9 @@ def construct_predictions_path(data_config: Dict, model: str, args: argparse.Nam
         data_config (dict): data config
         model (str): model name
         args (argparse.Namespace): arguments from the command line
+    
+    Returns:
+        Tuple[Path, Path]: the train and test predictions paths
     """
     results_dir = construct_predictions_dir_path(data_config, args, model)
 
@@ -90,7 +106,7 @@ def construct_predictions_path(data_config: Dict, model: str, args: argparse.Nam
 
 def construct_smoothie_predictions_path(
     data_config: Dict, model: str, args: argparse.Namespace
-):
+) -> Path:
     """
     Construct the paths where train and test predictions will be saved for Smoothie.
 
@@ -98,6 +114,9 @@ def construct_smoothie_predictions_path(
         data_config (dict): data config
         model (str): model name
         args (argparse.Namespace): arguments from the command line
+    
+    Returns:
+        Path: the test predictions path
     """
     results_dir = construct_predictions_dir_path(data_config, args, model)
     if args.multi_model:
@@ -119,7 +138,7 @@ def construct_smoothie_predictions_path(
 
 def construct_pick_random_predictions_path(
     data_config: Dict, model: str, args: argparse.Namespace
-):
+) -> Path:
     """
     Construct the paths where train and test predictions will be saved for the pick random baseline.
 
@@ -127,6 +146,9 @@ def construct_pick_random_predictions_path(
         data_config (dict): data config
         model (str): model name
         args (argparse.Namespace): arguments from the command line
+    
+    Returns:
+        Path: the test predictions path
     """
     results_dir = construct_predictions_dir_path(data_config, args, model)
     if args.multi_model:
@@ -139,7 +161,7 @@ def construct_pick_random_predictions_path(
 
 def construct_labeled_oracle_predictions_path(
     data_config: Dict, model: str, args: argparse.Namespace
-):
+) -> Path:
     """
     Construct the paths where train and test predictions will be saved for the labeled oracle baseline.
 
@@ -147,6 +169,9 @@ def construct_labeled_oracle_predictions_path(
         data_config (dict): data config
         model (str): model name
         args (argparse.Namespace): arguments from the command line
+    
+    Returns:
+        Path: the test predictions path
     """
 
     results_dir = construct_predictions_dir_path(data_config, args, model)

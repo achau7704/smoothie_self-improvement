@@ -86,6 +86,7 @@ def evaluate_predictions(
     for task_name in tasks:
         metric_func = METRIC_FUNCS[metric_map[task_name]]
         task_idxs = np.where(task_names == task_name)[0]
+        #console.log(task_name, task_idxs)
         task_generations = generations[task_idxs]
         cleaned_generations = clean_generations(task_generations)
         task_references = references[task_idxs]
@@ -164,7 +165,18 @@ def main(args):
                     mean_score = np.mean(trial_scores)
                     scores[metric][method] = mean_score
         elif fname.startswith("individual_"):
-            pass
+            generations = np.array(predictions_dict["generations"])
+            for metric in data_config["metrics"]:
+                for prompt_idx in range(generations.shape[1]):
+                    prompt_scores =  evaluate_predictions(
+                        generations=generations[:, prompt_idx],
+                        references=references,
+                        task_names=task_names,
+                        metric_map=MULTI_MODEL_TASK2METRIC,
+                    )
+                    
+                    mean_score = np.mean(prompt_scores)
+                    scores[metric]["ensemble"][f"prompt_{prompt_idx}"] = mean_score
         else:
             generations = predictions_dict["generations"]
             if multitask:

@@ -1,20 +1,22 @@
+# TODO: Remove unused constants
 HF_CACHE_DIR = "../cache"
 
 # This dictionary contains the name of each test dataset, the subset to use, and the split to use.
 HF_TEST_DATASETS = {
-    "content_rephrasing": ("facebook/content_rephrasing", None, "test"),
     "cnn_dailymail": ("cnn_dailymail", "3.0.0", "test"),
-    "definition_extraction": ("nguha/legalbench", "definition_extraction", "test"),
-    "alpaca_eval": ("tatsu-lab/alpaca_eval", "alpaca_eval_gpt4_baseline", "eval"),
-    "gigaword": ("gigaword", None, "test"),
     "xsum": ("EdinburghNLP/xsum", None, "test"),
     "e2e_nlg": ("e2e_nlg", None, "test"),
     "web_nlg": ("web_nlg", "release_v3.0_en", "dev"),
-    "openai_humaneval": ("openai_humaneval", None, "test"),
-    "common_gen": ("allenai/common_gen", None, "validation"),
     "squad": ("hazyresearch/based-squad", None, "validation"),
     "trivia_qa": ("mandarjoshi/trivia_qa", "rc", "validation"),
     "definition_extraction": ("nguha/legalbench", "definition_extraction", "test"),
+
+    # These datasets aren't reported in the paper
+    "content_rephrasing": ("facebook/content_rephrasing", None, "test"),
+    "alpaca_eval": ("tatsu-lab/alpaca_eval", "alpaca_eval_gpt4_baseline", "eval"),
+    "gigaword": ("gigaword", None, "test"),
+    "openai_humaneval": ("openai_humaneval", None, "test"),
+    "common_gen": ("allenai/common_gen", None, "validation"),
 }
 
 # This dictionary contains the name of each train dataset, the subset to use, and the split to use. This is only used for selecting in-context demonstrations for prompts.
@@ -87,7 +89,3 @@ HF_MODEL_MAX_LENGTHS = {
     "incite-3b": 4096,
     "nous-capybara": 4096,
 }
-
-# METHODS
-UNIFORM_AVG = "uniform_avg"
-SMOOTHIE = "smoothie"
