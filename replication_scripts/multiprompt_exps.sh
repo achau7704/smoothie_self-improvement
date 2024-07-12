@@ -8,12 +8,12 @@ RESULTS_DIR="smoothie_data/multi_prompt_results"
 # Dataset configs to run
 data_configs=(
     "dataset_configs/squad.yaml"
-    "dataset_configs/trivia_qa.yaml"
-    "dataset_configs/definition_extraction.yaml"
-    "dataset_configs/cnn_dailymail.yaml"
-    "dataset_configs/e2e_nlg.yaml"
-    "dataset_configs/xsum.yaml"
-    "dataset_configs/web_nlg.yaml"
+    #"dataset_configs/trivia_qa.yaml"
+    #"dataset_configs/definition_extraction.yaml"
+    #"dataset_configs/cnn_dailymail.yaml"
+    #"dataset_configs/e2e_nlg.yaml"
+    #"dataset_configs/xsum.yaml"
+    #"dataset_configs/web_nlg.yaml"
 )
 
 # Model
@@ -36,14 +36,14 @@ for dataset_config in "${data_configs[@]}"; do
         --dataset_config $dataset_config \
         --model $model \
         --results_dir $RESULTS_DIR \
-        --multi_prompt
+        --multi_prompt --redo
 
     # Labeled oracle
     python -m src.labeled_oracle \
         --dataset_config $dataset_config \
         --model $model \
         --results_dir $RESULTS_DIR \
-        --multi_prompt
+        --multi_prompt --redo
 
     # Smoothie sample independent
     python -m src.run_smoothie \
@@ -51,7 +51,7 @@ for dataset_config in "${data_configs[@]}"; do
         --model $model \
         --results_dir $RESULTS_DIR \
         --multi_prompt \
-        --type sample_independent
+        --type sample_independent --redo
 
     # Smoothie sample dependent
     python -m src.run_smoothie \
@@ -60,7 +60,7 @@ for dataset_config in "${data_configs[@]}"; do
         --results_dir $RESULTS_DIR \
         --multi_prompt \
         --type sample_dependent \
-        --k 20
+        --k 20 --redo
 
     # Evaluate
     python -m src.evaluate.evaluate \
