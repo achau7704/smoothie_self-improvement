@@ -130,10 +130,12 @@ def main(args):
             # Ignore train files
             continue
 
+        if "_gens_" in fname and "smoothie" not in fname:
+            continue
+
         # Extract references
         references = get_references(test_dataset)
         predictions_dict = json.loads(predictions_fpath.read_text())
-
         if fname.startswith("labeled_oracle") or fname.startswith("pick_random"):
             # Predictions from labeled oracle and pick_random baseline take the shape (n_trials, n_samples). We report the average.
             trial_generations = predictions_dict["generations"]
