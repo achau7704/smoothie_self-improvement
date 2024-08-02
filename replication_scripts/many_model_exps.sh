@@ -10,21 +10,11 @@ RESULTS_DIR="smoothie_data/multi_model_results"
 # Array of dataset configs
 dataset_configs=(
     "dataset_configs/squad.yaml"
-    "dataset_configs/trivia_qa.yaml"
-    "dataset_configs/definition_extraction.yaml"
-    "dataset_configs/cnn_dailymail.yaml"
-    "dataset_configs/e2e_nlg.yaml"
-    "dataset_configs/xsum.yaml"
-    "dataset_configs/web_nlg.yaml"
-    "dataset_configs/acc_group.yaml"
-    "dataset_configs/rouge2_group.yaml"
-    "dataset_configs/gsm8k.yaml"
 )
 
 # Select model group - uncomment one
-model_group="1b"
 #model_group="3b"
-#model_group="7b"
+model_group="7b_many"
 
 for dataset_config in "${dataset_configs[@]}"; do
     echo "Processing dataset config: $dataset_config"
@@ -67,13 +57,29 @@ for dataset_config in "${dataset_configs[@]}"; do
         --type sample_independent
 
     # Smoothie sample dependent
-    python -m src.run_smoothie \
+    for k in {1..20}; do
+        python -m src.run_smoothie \
+            --dataset_config $dataset_config \
+            --model_group $model_group \
+            --results_dir $RESULTS_DIR \
+            --multi_model \
+            --type sample_dependent \
+            --k $k
+    done
+
+    python -m src.mbr \
         --dataset_config $dataset_config \
         --model_group $model_group \
         --results_dir $RESULTS_DIR \
         --multi_model \
-        --type sample_dependent \
-        --k 1
+        --type sample_independent
+
+    python -m src.mbr \
+        --dataset_config $dataset_config \
+        --model_group $model_group \
+        --results_dir $RESULTS_DIR \
+        --multi_model \
+        --type sample_dependent
 
     # Evaluate
     python -m src.evaluate.evaluate \

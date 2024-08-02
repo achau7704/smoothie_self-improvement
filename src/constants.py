@@ -59,6 +59,8 @@ HF_MODELS = {
     "gemma-2b": "google/gemma-2b-it",
     "incite-3b": "togethercomputer/RedPajama-INCITE-Instruct-3B-v1",
     "nous-capybara": "NousResearch/Nous-Capybara-7B-V1.9",
+    "qwen-1.5b": "Qwen/Qwen2-1.5B-Instruct",
+    "flan-t5-large": "google/flan-t5-large"
 }
 
 # MODEL MAX LENGTHS
@@ -88,4 +90,6 @@ HF_MODEL_MAX_LENGTHS = {
     "gemma-2b": 4096,
     "incite-3b": 4096,
     "nous-capybara": 4096,
+    "qwen-1.5b": 4096,
+    "flan-t5-large": 4096
 }

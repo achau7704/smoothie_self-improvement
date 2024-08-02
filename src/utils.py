@@ -22,7 +22,9 @@ transformers.logging.set_verbosity_error()
 # Model groups for multi-model experiments
 MODEL_GROUPS = {
     "7b": ["mistral-7b", "llama-2-7b", "vicuna-7b", "gemma-7b", "nous-capybara"],
-    "3b": ["pythia-2.8b", "gemma-2b", "incite-3b", "dolly-3b"]
+    "7b_many": ["mistral-7b", "llama-2-7b", "vicuna-7b", "gemma-7b", "nous-capybara", "snorkel-7b", "phi-2", "pythia-6.9b", "phi-3", "storm-7b"],
+    "3b": ["pythia-2.8b", "gemma-2b", "incite-3b", "dolly-3b"],
+    "1b": ["gemma-2b", "qwen-1.5b", "phi-3"],
 }
 
 
