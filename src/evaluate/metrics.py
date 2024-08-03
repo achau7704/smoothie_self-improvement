@@ -64,12 +64,30 @@ def definition_extraction_acc(generations, references):
             correct.append(0)
     return correct
 
+def gsm8k_acc(generations, references):
+    correct = []
+    for gen, ref in zip(generations, references):
+        gen_sentences = gen.split(".")
+        for sentence in gen_sentences:
+            if "the answer is" in sentence:
+                gen_lower = sentence.lower().replace(",", "")
+                ref_lower = ref.lower().replace(",", "")
+                if ref_lower in gen_lower:
+                    correct.append(1)
+                else:
+                    correct.append(0)
+                break
+        else:
+            correct.append(0)
+    return correct
+
 
 METRIC_FUNCS = {
     "rouge2": compute_rouge2_score,
     "squad_acc": squad_acc,
     "trivia_qa_acc": trivia_qa_acc,
     "definition_extraction_acc": definition_extraction_acc,
+    "gsm8k_acc": gsm8k_acc,
 }
 
 MULTI_MODEL_TASK2METRIC = {

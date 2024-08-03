@@ -22,8 +22,8 @@ dataset_configs=(
 )
 
 # Select model group - uncomment one
-model_group="1b"
-#model_group="3b"
+#model_group="1b"
+model_group="3b"
 #model_group="7b"
 
 for dataset_config in "${dataset_configs[@]}"; do
@@ -74,6 +74,31 @@ for dataset_config in "${dataset_configs[@]}"; do
         --multi_model \
         --type sample_dependent \
         --k 1
+    
+    python -m src.run_smoothie \
+        --dataset_config $dataset_config \
+        --model_group $model_group \
+        --results_dir $RESULTS_DIR \
+        --multi_model \
+        --type sample_dependent \
+        --k 10
+
+    # Smoothie train time sample independent
+    python -m src.run_smoothie_train_time \
+        --dataset_config $dataset_config \
+        --model_group $model_group \
+        --results_dir $RESULTS_DIR \
+        --multi_model \
+        --type sample_independent --redo
+
+    # Smoothie train time sample dependent
+    python -m src.run_smoothie_train_time \
+        --dataset_config $dataset_config \
+        --model_group $model_group \
+        --results_dir $RESULTS_DIR \
+        --multi_model \
+        --type sample_dependent \
+        --k 20 --redo
 
     # Evaluate
     python -m src.evaluate.evaluate \

@@ -88,6 +88,7 @@ TASK2METRIC = {
     "trivia_qa": "trivia_qa_acc",
     "web_nlg": "rouge2",
     "xsum": "rouge2",
+    "gsm8k": "gsm8k_acc",
 }
 
 def main(args):

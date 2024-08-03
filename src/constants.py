@@ -10,6 +10,7 @@ HF_TEST_DATASETS = {
     "squad": ("hazyresearch/based-squad", None, "validation"),
     "trivia_qa": ("mandarjoshi/trivia_qa", "rc", "validation"),
     "definition_extraction": ("nguha/legalbench", "definition_extraction", "test"),
+    "gsm8k": ("gsm8k", "main", "test"),
 
     # These datasets aren't reported in the paper
     "content_rephrasing": ("facebook/content_rephrasing", None, "test"),
@@ -27,6 +28,7 @@ HF_TRAIN_DATASETS = {
     "xsum": ("EdinburghNLP/xsum", None, "train"),
     "common_gen": ("allenai/common_gen", None, "train"),
     "trivia_qa": ("mandarjoshi/trivia_qa", "rc", "train[:10%]"),
+    "gsm8k": ("gsm8k", "main", "train"),
 }
 
 # HF URLS for each model

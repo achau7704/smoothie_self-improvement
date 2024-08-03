@@ -190,6 +190,10 @@ def main(args):
                 )
                 if fname.startswith("smoothie"):
                     scores["smoothie"][method] = score
+                elif fname.startswith("pair_rm"):
+                    scores[method] = score
+                elif fname.startswith("mbr"):
+                    scores[method] = score
                 else:
                     scores["ensemble"][method] = score
             else:
@@ -202,6 +206,10 @@ def main(args):
                     )
                     if fname.startswith("smoothie"):
                         scores[metric]["smoothie"][method] = score
+                    elif fname.startswith("pair_rm"):
+                        scores[metric][method] = score
+                    elif fname.startswith("mbr"):
+                        scores[metric][method] = score
                     else:
                         scores[metric]["ensemble"][method] = score
 
