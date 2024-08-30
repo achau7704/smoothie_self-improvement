@@ -9,16 +9,16 @@ RESULTS_DIR="smoothie_data/multi_model_results"
 
 # Array of dataset configs
 dataset_configs=(
-    "dataset_configs/squad.yaml"
-    "dataset_configs/trivia_qa.yaml"
-    "dataset_configs/definition_extraction.yaml"
-    "dataset_configs/cnn_dailymail.yaml"
-    "dataset_configs/e2e_nlg.yaml"
-    "dataset_configs/xsum.yaml"
-    "dataset_configs/web_nlg.yaml"
+    #"dataset_configs/squad.yaml"
+    #"dataset_configs/trivia_qa.yaml"
+    #"dataset_configs/definition_extraction.yaml"
+    #"dataset_configs/cnn_dailymail.yaml"
+    #"dataset_configs/e2e_nlg.yaml"
+    #"dataset_configs/xsum.yaml"
+    #"dataset_configs/web_nlg.yaml"
     "dataset_configs/acc_group.yaml"
     "dataset_configs/rouge2_group.yaml"
-    "dataset_configs/gsm8k.yaml"
+    #"dataset_configs/gsm8k.yaml"
 )
 
 # Select model group - uncomment one
@@ -89,7 +89,7 @@ for dataset_config in "${dataset_configs[@]}"; do
         --model_group $model_group \
         --results_dir $RESULTS_DIR \
         --multi_model \
-        --type sample_independent --redo
+        --type sample_independent
 
     # Smoothie train time sample dependent
     python -m src.run_smoothie_train_time \
@@ -98,7 +98,24 @@ for dataset_config in "${dataset_configs[@]}"; do
         --results_dir $RESULTS_DIR \
         --multi_model \
         --type sample_dependent \
-        --k 20 --redo
+        --k 20
+    
+    # Smoothie train time sample dependent
+    python -m src.run_smoothie_train_time \
+        --dataset_config $dataset_config \
+        --model_group $model_group \
+        --results_dir $RESULTS_DIR \
+        --multi_model \
+        --type sample_dependent \
+        --k 100
+
+    python -m src.run_smoothie_train_time \
+        --dataset_config $dataset_config \
+        --model_group $model_group \
+        --results_dir $RESULTS_DIR \
+        --multi_model \
+        --type sample_dependent \
+        --k 200
 
     # Evaluate
     python -m src.evaluate.evaluate \
