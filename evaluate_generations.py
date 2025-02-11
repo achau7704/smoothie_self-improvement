@@ -1,0 +1,282 @@
+import json
+import jsonlines
+import re
+import unicodedata
+from pathlib import Path
+from typing import List, Union
+
+from tqdm.auto import tqdm
+from datasets import load_metric  
+
+
+# Dataset Configuration
+# Path to the dataset file (JSON or JSONL)
+DATASET_PATH = "../smoothie_data/datasets/squad_train.jsonl"
+
+# Format of the dataset file: 'json' or 'jsonl'
+DATASET_FORMAT = "jsonl"
+
+# Field names in the dataset
+PROMPT_FIELD = "multi_model_prompt"
+REFERENCE_FIELD = "reference"
+
+
+# Generations Configuration 
+# Path to the model generations file (JSON or JSONL)
+GENERATIONS_PATH = "../smoothie_data/multi_model_results_old/squad/3b/pythia-2.8b_train.json"
+
+# Format of the generations file: 'json' or 'jsonl'
+GENERATIONS_FORMAT = "json"
+
+# Field name in the generations file
+GENERATION_FIELD = "generations"  # Adjust if different
+
+
+# Evaluation Settings 
+# Whether to normalize texts before comparison
+NORMALIZE = True
+
+# Answer Markers to extract answers from generated text
+ANSWER_MARKERS = ["Answer:", "answer:", "ANSWER:", "Answer -", "Answer –"]
+
+
+
+# Helper Functions
+
+def load_dataset(
+    dataset_path: Union[str, Path],
+    format: str,
+    prompt_field: str,
+    reference_field: str
+) -> List[dict]:
+    """
+    Loads the dataset from a JSON or JSON Lines file.
+
+    Args:
+        dataset_path (str or Path): Path to the dataset file.
+        format (str): Format of the dataset file ('json' or 'jsonl').
+        prompt_field (str): Field name for the input prompts.
+        reference_field (str): Field name for the reference answers.
+
+    Returns:
+        List[dict]: A list of dataset entries with prompts and references.
+    """
+    dataset_path = Path(dataset_path)
+    if not dataset_path.exists():
+        raise FileNotFoundError(f"Dataset file not found at {dataset_path}")
+
+    data = []
+    if format.lower() == 'jsonl':
+        with jsonlines.open(dataset_path, mode='r') as reader:
+            for obj in reader:
+                prompt = obj.get(prompt_field, '').strip()
+                reference = obj.get(reference_field, '').strip()
+                if prompt and reference:
+                    data.append({'prompt': prompt, 'reference': reference})
+    elif format.lower() == 'json':
+        with open(dataset_path, 'r', encoding='utf-8') as f:
+            json_data = json.load(f)
+            for obj in json_data:
+                prompt = obj.get(prompt_field, '').strip()
+                reference = obj.get(reference_field, '').strip()
+                if prompt and reference:
+                    data.append({'prompt': prompt, 'reference': reference})
+    else:
+        raise ValueError("Unsupported dataset format. Use 'json' or 'jsonl'.")
+
+    print(f"Loaded {len(data)} samples from dataset.\n")
+    return data
+
+def load_generations(
+    generations_path: Union[str, Path],
+    format: str,
+    generation_field: str
+) -> List[str]:
+    """
+    Loads the model generations from a JSON or JSON Lines file.
+
+    Args:
+        generations_path (str or Path): Path to the generations file.
+        format (str): Format of the generations file ('json' or 'jsonl').
+        generation_field (str): Field name for the generated answers.
+
+    Returns:
+        List[str]: A list of generated answers.
+    """
+    generations_path = Path(generations_path)
+    if not generations_path.exists():
+        raise FileNotFoundError(f"Generations file not found at {generations_path}")
+
+    generations = []
+    if format.lower() == 'jsonl':
+        with jsonlines.open(generations_path, mode='r') as reader:
+            for obj in reader:
+                gen = obj.get(generation_field, '').strip()
+                if gen:
+                    generations.append(gen)
+    elif format.lower() == 'json':
+        with open(generations_path, 'r', encoding='utf-8') as f:
+            json_data = json.load(f)
+            # Assuming 'generations' is a list of strings
+            gens = json_data.get(generation_field, [])
+            if isinstance(gens, list):
+                for gen in gens:
+                    if isinstance(gen, str):
+                        generations.append(gen.strip())
+            elif isinstance(gens, dict):
+                # Handle case where 'generations' is a dict with indices
+                for key in sorted(gens.keys(), key=lambda x: int(x) if x.isdigit() else x):
+                    gen = gens[key]
+                    if isinstance(gen, str):
+                        generations.append(gen.strip())
+    else:
+        raise ValueError("Unsupported generations format. Use 'json' or 'jsonl'.")
+
+    print(f"Loaded {len(generations)} generations from generations file.\n")
+    return generations
+
+def extract_answer(
+    generated_text: str,
+    answer_markers: List[str] = None
+) -> str:
+    """
+    Extracts the answer from the generated text based on predefined answer markers.
+
+    Args:
+        generated_text (str): The complete text generated by the model.
+        answer_markers (List[str], optional): List of markers indicating where the answer starts.
+
+    Returns:
+        str: The extracted answer. If no marker is found, returns the entire text.
+    """
+    if answer_markers is None:
+        answer_markers = ["Answer:", "answer:", "ANSWER:", "Answer -", "Answer –"]
+
+    for marker in answer_markers:
+        # Use regex for case-insensitive search and handle possible separators
+        pattern = re.escape(marker) + r"\s*(.*)"
+        match = re.search(pattern, generated_text, re.IGNORECASE | re.DOTALL)
+        if match:
+            return match.group(1).strip()
+    # If no marker is found, assume the entire text is the answer
+    return generated_text.strip()
+
+def normalize_text(text: str) -> str:
+    """
+    Normalizes the text by converting to lowercase, stripping whitespace, and removing extra spaces.
+
+    Args:
+        text (str): The text to normalize.
+
+    Returns:
+        str: The normalized text.
+    """
+    if not isinstance(text, str):
+        return ""
+    # Normalize Unicode characters
+    text = unicodedata.normalize("NFKC", text)
+    # Remove extra whitespace
+    text = re.sub(r'\s+', ' ', text)
+    return text.strip().lower()
+
+
+def evaluate(
+    dataset: List[dict],
+    generations: List[str],
+    normalize: bool = True,
+) -> None:
+    """
+    Evaluates the accuracy of model generations against dataset references.
+
+    Args:
+        dataset (List[dict]): The loaded dataset with prompts and references.
+        generations (List[str]): The list of generated answers.
+        normalize (bool, optional): Whether to normalize texts before comparison. Defaults to True.
+
+    Returns:
+        None
+    """
+    if len(generations) != len(dataset):
+        print(f"Warning: Number of generations ({len(generations)}) does not match number of dataset samples ({len(dataset)}).")
+        min_length = min(len(generations), len(dataset))
+        print(f"Proceeding with the first {min_length} samples.\n")
+    else:
+        min_length = len(generations)
+
+    correct = 0
+    total = 0
+
+    for idx in tqdm(range(min_length), desc="Evaluating"):
+        reference = dataset[idx]['reference']
+        generated_text = generations[idx]
+
+        # Extract answer from generated text
+        extracted_answer = extract_answer(generated_text)
+
+        # Normalize if required
+        if normalize:
+            normalized_reference = normalize_text(reference)
+            normalized_generated = normalize_text(extracted_answer)
+        else:
+            normalized_reference = reference.strip()
+            normalized_generated = extracted_answer.strip()
+
+        # Compare answers
+        if normalized_reference.lower() in normalized_generated.lower() or normalized_generated.lower() in normalized_reference.lower():
+            is_correct = True
+        else:
+            is_correct = False
+        if is_correct:
+            correct += 1
+
+        total += 1
+
+        # Optional: Print details for correct matches
+        # if is_correct:
+            # print(f"---\nSample {total}:")
+            # print(f"Prompt:\n{dataset[idx]['prompt']}")
+            # print(f"Reference: {reference}")
+            # print(f"Generated Answer: {extracted_answer}")
+            # print(f"Status: Correct\n---\n")
+
+        # Optional: Print details for incorrect matches (Uncomment if needed)
+        # else:
+        #     print(f"---\nSample {total}:")
+        #     print(f"Prompt:\n{dataset[idx]['prompt']}")
+        #     print(f"Reference: {reference}")
+        #     print(f"Generated Answer: {extracted_answer}")
+        #     print(f"Status: Incorrect\n---\n")
+
+    # Calculate metrics
+    accuracy = (correct / total) * 100 if total > 0 else 0
+    print(f"Total Correct: {correct}")
+    print(f"Total Evaluated: {total}")
+    print(f"Accuracy: {accuracy:.2f}% ({correct}/{total})")
+
+
+# Main Execution
+def main():
+    # Load Dataset 
+    dataset = load_dataset(
+        dataset_path=DATASET_PATH,
+        format=DATASET_FORMAT,
+        prompt_field=PROMPT_FIELD,
+        reference_field=REFERENCE_FIELD
+    )
+
+    # Load Generations 
+    generations = load_generations(
+        generations_path=GENERATIONS_PATH,
+        format=GENERATIONS_FORMAT,
+        generation_field=GENERATION_FIELD
+    )
+
+    # Evaluate 
+    evaluate(
+        dataset=dataset,
+        generations=generations,
+        normalize=NORMALIZE
+    )
+
+if __name__ == "__main__":
+    main()
