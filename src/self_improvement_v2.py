@@ -60,6 +60,14 @@ FINE_TUNED_MODEL_DIR = Path(RESULTS_DIR) / "fine_tuned"
 RESULTS_DIR.mkdir(parents=True, exist_ok=True)
 FINE_TUNED_MODEL_DIR.mkdir(parents=True, exist_ok=True)
 
+wandb.init(
+    project = "smoothie_self_improvement",
+
+    config = {
+        
+    }
+)
+
 
 
 def apply_smoothie(teacher_models):
