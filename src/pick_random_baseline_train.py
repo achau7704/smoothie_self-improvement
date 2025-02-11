@@ -1,5 +1,5 @@
 """
-This script implements the pick-random baseline, which randomly selects one of the individual generations to return.
+This script implements the pick-random baseline, which randomly selects one of the individual generations to return for the training dataset.
 """
 
 import warnings
@@ -55,6 +55,11 @@ parser.add_argument(
     action="store_true",
 )
 parser.add_argument(
+    "--test",
+    action="store_true",
+    help="Runs the script in test mode. This will only generate predictions for two samples.",
+)
+parser.add_argument(
     "--n_generations",
     default=1,
     type=int,
@@ -64,6 +69,12 @@ parser.add_argument(
     "--seed",
     default=42,
     type=int,
+)
+parser.add_argument(
+    "--pick_random_run_id",
+    default=0,
+    type=int,
+    help="Index number in generations list",
 )
 
 
@@ -77,22 +88,23 @@ def main(args):
         console.log(f"Results file already exists at {output_fpath}. Skipping.")
         return
 
-    test_generations = load_predictions(predictions_dir, "test", args)
+    train_generations = load_predictions(predictions_dir, "train", args)
 
     sequence_texts = []
     for _ in range(10):
         # we do pick-random ten times to reduce noise
         trial_generations = []
-        for sample_idx in range(len(test_generations)):
+        for sample_idx in range(len(train_generations)):
             # Select a random generation from the individual generations.
-            generation_idx = np.random.randint(test_generations.shape[1])
-            generation = test_generations[sample_idx][generation_idx]
+            generation_idx = np.random.randint(train_generations.shape[1])
+            generation = train_generations[sample_idx][generation_idx]
             trial_generations.append(generation)
         sequence_texts.append(trial_generations)
 
     # Save to file
     results = {
-        "generations": sequence_texts,
+        "generations": sequence_texts[args.pick_random_run_id],  
+        #"generations": sequence_texts   #uncomment this to use for multiple pick randoms
     }
     output_fpath.write_text(json.dumps(results, indent=4))
     console.log(f"Results saved to {output_fpath}")

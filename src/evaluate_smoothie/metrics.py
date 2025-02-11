@@ -9,7 +9,7 @@ from typing import List, Union
 import numpy as np
 from tqdm.auto import tqdm
 
-from evaluate import load
+#from evaluate import load
 
 
 def compute_rouge2_score(

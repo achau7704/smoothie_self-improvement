@@ -9,9 +9,9 @@ import jsonlines
 from tqdm.auto import tqdm
 from transformers import set_seed
 
-from src.console import console
-from src.data_utils import construct_processed_dataset_paths
-from src.utils import (MODEL_GROUPS, check_args, construct_predictions_path,
+from console import console
+from data_utils import construct_processed_dataset_paths
+from utils import (MODEL_GROUPS, check_args, construct_predictions_path,
                        generate_per_sample_multi_prompt,
                        generate_per_sample_single_prompt, load_data_config,
                        load_hf_model)

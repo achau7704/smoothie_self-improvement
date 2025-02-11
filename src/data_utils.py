@@ -8,7 +8,7 @@ from typing import Dict, Union
 import pandas as pd
 from datasets import load_dataset
 
-from src.constants import HF_TEST_DATASETS, HF_TRAIN_DATASETS
+from constants import HF_TEST_DATASETS, HF_TRAIN_DATASETS
 
 
 # TODO: This is not the cleanest logic. We might want to refactor this to be more modular.

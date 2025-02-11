@@ -1,5 +1,5 @@
 """
-This script implements Smoothie. 
+This script implements Smoothie for the training dataset.
 """
 
 import warnings
@@ -7,7 +7,6 @@ import warnings
 warnings.filterwarnings(
     "ignore", category=UserWarning, message="TypedStorage is deprecated"
 )
-
 
 import argparse
 import json
@@ -21,9 +20,13 @@ from console import console
 from constants import *
 from data_utils import construct_processed_dataset_paths
 from model import Smoothie
-from utils import (check_args, construct_smoothie_predictions_path,
-                       embed_individual_generations, load_data_config,
-                       load_predictions)
+from utils import (
+    check_args,
+    construct_smoothie_predictions_path,
+    embed_individual_generations,
+    load_data_config,
+    load_predictions,
+)
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--model", type=str, help="LLM to use")
@@ -89,36 +92,40 @@ def main(args):
         console.log(f"Results file already exists at {output_fpath}. Skipping.")
         return
 
-    _, test_dataset_path = construct_processed_dataset_paths(args)
-    with jsonlines.open(test_dataset_path) as file:
-        test_dataset = list(file.iter())
-    test_inputs = [sample["embedding_input"] for sample in test_dataset]
+    # Modify this line to fetch the training dataset instead of the test dataset
+    train_dataset_path, _ = construct_processed_dataset_paths(args)
+    with jsonlines.open(train_dataset_path) as file:
+        train_dataset = list(file.iter())
+    train_inputs = [sample["embedding_input"] for sample in train_dataset]
 
-    test_generations_for_smoothie = load_predictions(
-        predictions_dir, "test", args, for_selection=False
+    # Modify these lines to load training predictions
+    train_generations_for_smoothie = load_predictions(
+        predictions_dir, "train", args, for_selection=False
     )
-    test_generations_for_selection = load_predictions(predictions_dir, "test", args)
+    train_generations_for_selection = load_predictions(predictions_dir, "train", args)
 
     model_name = "all-mpnet-base-v2"
     model = SentenceTransformer(model_name)
     console.log(f"Loaded embedding model: {model_name}")
 
-    test_input_embeddings = model.encode(test_inputs)
+    train_input_embeddings = model.encode(train_inputs)
 
     if args.use_full_text_embeddings:
-        # use full text embeddings as input to Smoothie.
-        # convert test_generations_for_smoothie to have test_input prepended.
+        # Use full text embeddings as input to Smoothie.
+        # Convert train_generations_for_smoothie to have train_input prepended.
         smoothie_text = []
-        assert len(test_inputs) == len(test_generations_for_smoothie)
-        for i, gens_per_sample in enumerate(test_generations_for_smoothie):
+        assert len(train_inputs) == len(train_generations_for_smoothie)
+        for i, gens_per_sample in enumerate(train_generations_for_smoothie):
             smoothie_text.append(
-                test_inputs[i] + " " + gen_per_model_per_sample
-                for gen_per_model_per_sample in gens_per_sample
+                [
+                    train_inputs[i] + " " + gen_per_model_per_sample
+                    for gen_per_model_per_sample in gens_per_sample
+                ]
             )
         smoothie_text = np.array(smoothie_text)
-        assert smoothie_text.shape == test_generations_for_smoothie.shape
+        assert smoothie_text.shape == train_generations_for_smoothie.shape
     else:
-        smoothie_text = test_generations_for_smoothie
+        smoothie_text = train_generations_for_smoothie
 
     smoothie_embeddings = embed_individual_generations(
         individual_generations=smoothie_text, model_name=model_name
@@ -130,13 +137,13 @@ def main(args):
 
     if args.type == "sample_dependent":
         if args.n_generations == 1:
-            # use KNN
+            # Use KNN
             nbrs = NearestNeighbors(n_neighbors=args.k, algorithm="auto")
             nbrs.fit(
-                test_input_embeddings
-            )  # not the same as smoothie_embeddings! only kernel-smooth based on x similarity
+                train_input_embeddings
+            )  # Not the same as smoothie_embeddings! Only kernel-smooth based on x similarity
 
-            _, test_indices = nbrs.kneighbors(test_input_embeddings)
+            _, train_indices = nbrs.kneighbors(train_input_embeddings)
 
             smoothie_dataset_weights = []
             for sample_idx in range(n_samples):
@@ -145,13 +152,13 @@ def main(args):
                         (1, n_voters, -1)
                     )
                 else:
-                    embs_per_sample = smoothie_embeddings[test_indices[sample_idx]]
+                    embs_per_sample = smoothie_embeddings[train_indices[sample_idx]]
                 smoothie = Smoothie(n_voters=n_voters, dim=embed_dim)
                 smoothie.fit(embs_per_sample)
                 smoothie_dataset_weights.append(smoothie.theta)
             smoothie_dataset_weights = np.array(smoothie_dataset_weights)
         else:
-            # use n_generations per sample to do estimation
+            # Use n_generations per sample to do estimation
             smoothie_dataset_weights = []
             for sample_idx in range(n_samples):
                 embs_per_sample = smoothie_embeddings[
@@ -164,7 +171,7 @@ def main(args):
                 smoothie_dataset_weights.append(smoothie.theta)
             smoothie_dataset_weights = np.array(smoothie_dataset_weights)
     else:
-        # learn a single set of weights for all samples
+        # Learn a single set of weights for all samples
         smoothie = Smoothie(n_voters=n_voters, dim=embed_dim)
         smoothie.fit(smoothie_embeddings)
         smoothie_dataset_weights = np.tile(smoothie.theta, (n_samples, 1))
@@ -172,7 +179,7 @@ def main(args):
     dataset_texts = []
     for sample_idx in range(n_samples):
         max_idx = smoothie_dataset_weights[sample_idx].argmax()
-        text = test_generations_for_selection[sample_idx][max_idx]
+        text = train_generations_for_selection[sample_idx][max_idx]
         dataset_texts.append(text)
 
         if args.test and sample_idx == 1:

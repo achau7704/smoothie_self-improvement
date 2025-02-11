@@ -14,7 +14,7 @@ import yaml
 from fastembed import TextEmbedding
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
-from src.constants import HF_MODEL_MAX_LENGTHS, HF_MODELS
+from constants import HF_MODEL_MAX_LENGTHS, HF_MODELS
 
 transformers.logging.set_verbosity_error()
 
@@ -132,8 +132,9 @@ def construct_smoothie_predictions_path(
     if args.use_full_text_embeddings:
         output_fpath += f"full_embeddings_"
     if args.test:
-        output_fpath += "test_"
-    output_fpath += f"test.json"
+        output_fpath += "test_json"
+    else:
+        output_fpath += f"train.json"
     output_fpath = Path(output_fpath)
     return output_fpath
 
@@ -180,10 +181,16 @@ def construct_pick_random_predictions_path(
         Path: the test predictions path
     """
     results_dir = construct_predictions_dir_path(data_config, args, model)
-    if args.multi_model:
-        output_fpath = results_dir / f"pick_random_{args.model_group}_test.json"
+    if args.test:
+        if args.multi_model:
+            output_fpath = results_dir / f"pick_random_{args.model_group}_test.json"
+        else:
+            output_fpath = results_dir / "pick_random_test.json"
     else:
-        output_fpath = results_dir / "pick_random_test.json"
+        if args.multi_model:
+            output_fpath = results_dir / f"pick_random_{args.model_group}_train.json"
+        else:
+            output_fpath = results_dir / "pick_random_train.json"
     output_fpath = Path(output_fpath)
     return output_fpath
 
