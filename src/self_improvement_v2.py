@@ -25,7 +25,7 @@ import re
 import unicodedata
 import wandb
 import yaml
-from transformers import AutoTokenizer, AutoModelForCausalLM, Trainer, TrainingArguments
+from transformers import AutoTokenizer, AutoModelForCausalLM, Trainer, TrainingArguments, DataCollatorForLanguageModeling
 from datasets import load_dataset, Dataset
 from peft import LoraConfig, get_peft_model, TaskType
 from sentence_transformers import SentenceTransformer
@@ -61,11 +61,9 @@ RESULTS_DIR.mkdir(parents=True, exist_ok=True)
 FINE_TUNED_MODEL_DIR.mkdir(parents=True, exist_ok=True)
 
 wandb.init(
+    entity="hazy-research",
     project = "smoothie_self_improvement",
-
-    config = {
-        
-    }
+    mode="disabled" # uncomment this to log to wandb 
 )
 
 
@@ -592,20 +590,16 @@ def fine_tune_model(fine_tuning_data_path, model_name, output_dir, num_epochs=1)
     if not responses:
         raise ValueError(f"No responses found in dataset: {fine_tuning_data_path}")
 
-    dataset = Dataset.from_list(responses)
+    # convert to HF dataset with one feature, 'text', which has input and output concatenated.
+    all_text = [{'text': response['input']  + " " + response['output']} for response in responses]
+    dataset = Dataset.from_list(all_text)
 
     # Tokenize the dataset
     def tokenize_function(examples):
-        inputs = tokenizer(examples["input"], truncation=True, max_length=64, padding="max_length")
-        with tokenizer.as_target_tokenizer():
-            labels = tokenizer(examples["output"], truncation=True, max_length=64, padding="max_length")
-        labels["input_ids"] = [
-            [-100 if token == tokenizer.pad_token_id else token for token in label]
-            for label in labels["input_ids"]
-        ]
-        return {"input_ids": inputs["input_ids"], "attention_mask": inputs["attention_mask"], "labels": labels["input_ids"]}
-
-    tokenized_dataset = dataset.map(tokenize_function, batched=True)
+        # 2048 should be enough for SQUAD. 
+        return tokenizer(examples['text'], truncation=True, padding="max_length", max_length=2048)
+    
+    tokenized_dataset = dataset.map(tokenize_function, batched=True, remove_columns=['text'])
 
     # Training arguments
     training_args = TrainingArguments(
@@ -616,7 +610,7 @@ def fine_tune_model(fine_tuning_data_path, model_name, output_dir, num_epochs=1)
         learning_rate=5e-5,
         logging_dir=f"{output_dir}/logs",
         logging_strategy="epoch",
-        logging_steps=1,
+        logging_steps=10,
         evaluation_strategy="no",
         save_strategy="epoch",
         save_total_limit=2,
@@ -624,20 +618,22 @@ def fine_tune_model(fine_tuning_data_path, model_name, output_dir, num_epochs=1)
         fp16=torch.cuda.is_available(),
     )
 
+    # The data collator is necessary for creating the 'labels' field, which is used for next token prediction.
+    data_collator = DataCollatorForLanguageModeling(tokenizer, mlm=False)
+
     # Trainer
     trainer = Trainer(
         model=model,
         args=training_args,
         train_dataset=tokenized_dataset,
-        tokenizer=tokenizer
+        tokenizer=tokenizer,
+        data_collator=data_collator
     )
 
     trainer.train()
     print("Fine-tuning completed. Saving the model...")
     model.save_pretrained(output_dir)
     tokenizer.save_pretrained(output_dir)
-
-
 
 
 def main():
@@ -703,21 +699,19 @@ def main():
     base_model.to(device)
 
     # Evaluate on train dataset
-    print("Evaluating on train dataset before fine-tuning...")
+    print("Evaluating on train dataset before fine-tuning...") # should this be evaluating on the test dataset?
     # Evaluate with ROUGE
     train_accuracy = evaluate_model(
-    model=base_model,
-    tokenizer=tokenizer,
-    dataset_path=train_dataset_path,
-    device=device,
-    data_config=data_config,
-    model_name=model_name,
-)
+        model=base_model,
+        tokenizer=tokenizer,
+        dataset_path=train_dataset_path,
+        device=device,
+        data_config=data_config,
+        model_name=model_name,
+    )
   
-
     #Fine-tune the model
     fine_tune_model(fine_tuning_data_path, model_name, output_dir)
-
 
     # Load the fine-tuned model
     print("Loading fine-tuned model...")
