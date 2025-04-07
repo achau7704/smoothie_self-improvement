@@ -16,6 +16,7 @@ import os
 import numpy as np
 import evaluate
 import string
+import math
 import json
 import jsonlines
 from pathlib import Path
@@ -25,7 +26,8 @@ import re
 import unicodedata
 import wandb
 import yaml
-from transformers import AutoTokenizer, AutoModelForCausalLM, Trainer, TrainingArguments
+from trl import DPOConfig, DPOTrainer
+from transformers import AutoTokenizer, AutoModelForCausalLM, Trainer, TrainingArguments, DataCollatorForLanguageModeling
 from datasets import load_dataset, Dataset
 from peft import LoraConfig, get_peft_model, TaskType
 from sentence_transformers import SentenceTransformer
@@ -37,7 +39,6 @@ from utils import (MODEL_GROUPS, check_args, construct_predictions_path,
 
 from constants import HF_MODEL_MAX_LENGTHS, HF_MODELS
 
-from self_improvement_v2_utils import normalize_pythia
 
 
 # Define constants (for single model)
@@ -53,19 +54,16 @@ DATASET_CONFIG_PATH = "../dataset_configs/squad.yaml"
 DATA_DIR = "../smoothie_data/datasets"
 
 RESULTS_DIR = Path("../smoothie_data/multi_model_results_old")  
-FINE_TUNED_MODEL_DIR = Path(RESULTS_DIR) / "fine_tuned"
 
 
 # Check that directories exist
 RESULTS_DIR.mkdir(parents=True, exist_ok=True)
-FINE_TUNED_MODEL_DIR.mkdir(parents=True, exist_ok=True)
+
 
 wandb.init(
+    entity="hazy-research",
     project = "smoothie_self_improvement",
-
-    config = {
-        
-    }
+    mode="disabled" # uncomment this to log to wandb 
 )
 
 
@@ -287,47 +285,127 @@ def prepare_finetuning_data(input_file, generations_file, output_file):
 
 
 
-def normalize_text(text):
+def prepare_dpo_data(input_file, generations_file, output_file, model_group, model_folder):
     """
-    Normalize text by performing the following operations:
-    1. Convert to lowercase.
-    2. Remove periods.
-    3. Replace dashes with spaces.
-    4. Collapse multiple spaces into a single space.
-    5. Remove "question:" and everything after it.
-    6. Strip leading and trailing whitespace.
-    
+    Prepares the DPO dataset by aligning generated answers with corresponding prompts.
+
     Args:
-        text (str): The text to normalize.
-        
+        input_file (str or Path): Path to the JSON Lines (.jsonl) file containing input data (e.g., training dataset).
+        generations_file (str or Path): Path to the JSON file containing generated responses.
+        output_file (str or Path): Path to save the prepared DPO data in JSON format.
+
     Returns:
-        str: The normalized text.
+        None
     """
-    # Step 1: Convert to lowercase
-    normalized = text.lower()
-    
-    # Step 2: Remove "question:" and everything after it, if present
-    question_marker = "question:"
-    answer_marker = "a:"
+    print("Preparing DPO data...")
 
-    if question_marker in normalized:
-        normalized = normalized.split(question_marker, 1)[0]
-    elif answer_marker in normalized:
-        # If "a:" is present, take everything after it.
-        normalized = normalized.split(answer_marker, 1)[1]
-    
-    # Step 3: Remove periods
-    normalized = normalized.replace(".", "")
-    
-    # Step 5: Collapse multiple spaces into a single space
-    normalized = ' '.join(normalized.split())
+    # Ensure paths are Path objects
+    input_file = Path(input_file)
+    generations_file = Path(generations_file)
+    output_file = Path(output_file)
 
-    normalized = normalized.split("\n", 1)[0].strip()
-    
-    # Step 6: Strip leading and trailing whitespace
-    normalized = normalized.strip()
-    
-    return normalized
+    # Load the input dataset
+    try:
+        with jsonlines.open(input_file, mode='r') as reader:
+            input_data = list(reader)
+        print(f"Loaded {len(input_data)} samples from input file: {input_file}")
+    except FileNotFoundError:
+        print(f"Error: Input file not found at {input_file}")
+        raise
+
+    # Load the smoothie weights
+    try:
+        with open(generations_file, 'r', encoding='utf-8') as f:
+            generations_data = json.load(f)
+            smoothie_weights = generations_data.get("smoothie_weights", [])
+
+    except FileNotFoundError:
+        print(f"Error: Generations file not found at {generations_file}")
+        raise
+    except json.JSONDecodeError as e:
+        print(f"Error decoding JSON from {generations_file}: {e}")
+        raise
+
+     # Validate alignment
+    if len(input_data) != len(smoothie_weights):
+        print(f"Error: Number of input samples ({len(input_data)}) does not match number of generations ({len(smoothie_weights)}).")
+        raise ValueError("Mismatched lengths between input data and generations.")
+
+    # 3) Load each model’s generation file from model_folder
+    #    Each file is named like "pythia-2.8b_train.json" and has:
+    #    {"generations": ["gen0", "gen1", ..., "genN-1"]}
+    model2gens = {}
+    for mname in MODEL_GROUPS[model_group]:
+        file_path = Path(model_folder) / f"{mname}_train.json"
+        with open(file_path, "r", encoding="utf-8") as f:
+            gen_data = json.load(f)
+        model2gens[mname] = gen_data["generations"]
+        print(f"Loaded {len(model2gens[mname])} generations from {file_path} for model '{mname}'.")
+
+    dpo_pairs = []
+    num_samples = min(len(input_data), len(smoothie_weights))
+    for i in range(num_samples):
+        # a) Prompt
+        prompt = input_data[i].get("multi_model_prompt", "").strip()
+        if not prompt:
+            # If the user stored prompts differently, adapt as needed
+            print(f"Skipping index {i}, missing 'multi_model_prompt'.")
+            continue
+
+        # b) Retrieve the 4 weights for this sample
+        w = smoothie_weights[i]
+        if len(w) < 4:
+            print(f"Skipping index {i}, not enough weights (found {len(w)}).")
+            continue
+
+        # Check for NaN or any weird values
+        if any((math.isnan(x) or x is None) for x in w):
+            print(f"Skipping index {i}, found NaN/None in smoothie weights {w}.")
+            continue
+
+        # c) Identify best (max) and worst (min) by index
+        j_chosen = max(range(4), key=lambda j: w[j])   # index of largest weight
+        for j_rejected in range(4):
+            # Skip the chosen index
+            if j_rejected == j_chosen:
+                continue
+
+            chosen_model   = MODEL_GROUPS[model_group][j_chosen]
+            rejected_model = MODEL_GROUPS[model_group][j_rejected]
+
+            chosen_text   = model2gens[chosen_model][i].strip()
+            rejected_text = model2gens[rejected_model][i].strip()
+
+            # Remove "Question:" and anything following it
+            if "Question" in chosen_text:
+                chosen_text = chosen_text.split("Question:")[0].strip()
+            if "Question" in rejected_text:
+                rejected_text = rejected_text.split("Question:")[0].strip()
+            if "\n\n" in chosen_text:
+                chosen_text = chosen_text.split("\n\n")[0].strip()
+            if "\n\n" in rejected_text:
+                rejected_text = rejected_text.split("\n\n")[0].strip()
+
+            dpo_pairs.append({
+                "prompt":   prompt,
+                "chosen":   chosen_text,
+                "rejected": rejected_text
+            })
+
+
+    print(f"Prepared {len(dpo_pairs)} DPO samples.")
+    dpo_data = {"pairs": dpo_pairs}
+
+    # Save the DPO dataset
+    try:
+        with open(output_file, 'w', encoding='utf-8') as f:
+            json.dump(dpo_data, f, indent=4)
+        print(f"DPO data saved to {output_file}")
+    except Exception as e:
+        print(f"Error saving fine-tuning data to {output_file}: {e}")
+        raise
+
+
 
 def evaluate_model(
     model,
@@ -343,7 +421,7 @@ def evaluate_model(
     Evaluate the model on a given dataset using batching and ROUGE-L F-measure
     as a metric to determine correctness.
     
-    If the ROUGE-L F-measure >= `rouge_threshold`, we count the sample as correct.
+    If the ROUGE-L F-measure >= rouge_threshold, we count the sample as correct.
 
     Args:
         model (AutoModelForCausalLM): The model to evaluate.
@@ -356,7 +434,7 @@ def evaluate_model(
         rouge_threshold (float): Minimum ROUGE-L F-measure required to count the answer as correct.
 
     Returns:
-        float: Accuracy of the model (percentage of answers above `rouge_threshold`).
+        float: Accuracy of the model (percentage of answers above rouge_threshold).
     """
     print(f"Evaluating model on {dataset_path} with ROUGE-L threshold={rouge_threshold}...")
 
@@ -511,20 +589,22 @@ def fine_tune_model_lora(fine_tuning_data_path, model_name, output_dir, num_epoc
     if not responses:
         raise ValueError(f"No responses found in dataset: {fine_tuning_data_path}")
 
-    dataset = Dataset.from_list(responses)
+    # convert to HF dataset with one feature, 'text', which has input and output concatenated.
+    all_text = [{'text': response['input']  + " " + response['output']} for response in responses]
+    dataset = Dataset.from_list(all_text)
 
     # Tokenize the dataset
     def tokenize_function(examples):
-        inputs = tokenizer(examples["input"], truncation=True, max_length=64, padding="max_length")
-        with tokenizer.as_target_tokenizer():
-            labels = tokenizer(examples["output"], truncation=True, max_length=64, padding="max_length")
-        labels["input_ids"] = [
-            [-100 if token == tokenizer.pad_token_id else token for token in label]
-            for label in labels["input_ids"]
-        ]
-        return {"input_ids": inputs["input_ids"], "attention_mask": inputs["attention_mask"], "labels": labels["input_ids"]}
+        # 2048 should be enough for SQUAD. 
+        return tokenizer(examples['text'], truncation=True, padding="max_length", max_length=2048)
+    
+    tokenized_dataset = dataset.map(tokenize_function, batched=True, remove_columns=['text'])
 
-    tokenized_dataset = dataset.map(tokenize_function, batched=True)
+    # Data collator for casual language modeling
+    data_collator = DataCollatorForLanguageModeling(
+        tokenizer=tokenizer,
+        mlm=False  # We do not want masked LM; we want causal LM
+    )
 
     # Training arguments
     training_args = TrainingArguments(
@@ -548,7 +628,8 @@ def fine_tune_model_lora(fine_tuning_data_path, model_name, output_dir, num_epoc
         model=model,
         args=training_args,
         train_dataset=tokenized_dataset,
-        tokenizer=tokenizer,
+        processing_class=tokenizer,
+        data_collator=data_collator
     )
 
     trainer.train()
@@ -557,7 +638,7 @@ def fine_tune_model_lora(fine_tuning_data_path, model_name, output_dir, num_epoc
     tokenizer.save_pretrained(output_dir)
 
 
-def fine_tune_model(fine_tuning_data_path, model_name, output_dir, num_epochs=1):
+def fine_tune_model(fine_tuning_data_path, model_name, output_dir, num_epochs=5):
     """
     Fine-tune the model on the provided dataset.
     Args:
@@ -566,7 +647,7 @@ def fine_tune_model(fine_tuning_data_path, model_name, output_dir, num_epochs=1)
         output_dir (str): Directory to save the fine-tuned model.
         num_epochs (int): Number of training epochs.
     """
-    print("Staring fine-tuning process...")
+    print("Starting fine-tuning process...")
 
     gc.collect()
     torch.cuda.empty_cache()
@@ -574,13 +655,11 @@ def fine_tune_model(fine_tuning_data_path, model_name, output_dir, num_epochs=1)
     # Load tokenizer and model
     tokenizer = AutoTokenizer.from_pretrained(model_name)
 
-    model = AutoModelForCausalLM.from_pretrained(
-        model_name)
+    model = AutoModelForCausalLM.from_pretrained(model_name)
 
     # Save memory by not storing all intermediate activations
     model.gradient_checkpointing_enable()
 
-    # Need this for Pythia models
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
 
@@ -592,20 +671,16 @@ def fine_tune_model(fine_tuning_data_path, model_name, output_dir, num_epochs=1)
     if not responses:
         raise ValueError(f"No responses found in dataset: {fine_tuning_data_path}")
 
-    dataset = Dataset.from_list(responses)
+    # convert to HF dataset with one feature, 'text', which has input and output concatenated.
+    all_text = [{'text': response['input']  + " " + response['output']} for response in responses]
+    dataset = Dataset.from_list(all_text)
 
     # Tokenize the dataset
     def tokenize_function(examples):
-        inputs = tokenizer(examples["input"], truncation=True, max_length=64, padding="max_length")
-        with tokenizer.as_target_tokenizer():
-            labels = tokenizer(examples["output"], truncation=True, max_length=64, padding="max_length")
-        labels["input_ids"] = [
-            [-100 if token == tokenizer.pad_token_id else token for token in label]
-            for label in labels["input_ids"]
-        ]
-        return {"input_ids": inputs["input_ids"], "attention_mask": inputs["attention_mask"], "labels": labels["input_ids"]}
-
-    tokenized_dataset = dataset.map(tokenize_function, batched=True)
+        # 2048 should be enough for SQUAD. 
+        return tokenizer(examples['text'], truncation=True, padding="max_length", max_length=2048)
+    
+    tokenized_dataset = dataset.map(tokenize_function, batched=True, remove_columns=['text'])
 
     # Training arguments
     training_args = TrainingArguments(
@@ -616,20 +691,24 @@ def fine_tune_model(fine_tuning_data_path, model_name, output_dir, num_epochs=1)
         learning_rate=5e-5,
         logging_dir=f"{output_dir}/logs",
         logging_strategy="epoch",
-        logging_steps=1,
-        evaluation_strategy="no",
+        logging_steps=10,
+        eval_strategy="no",
         save_strategy="epoch",
         save_total_limit=2,
         disable_tqdm=False,
         fp16=torch.cuda.is_available(),
     )
 
+    # The data collator is necessary for creating the 'labels' field, which is used for next token prediction.
+    data_collator = DataCollatorForLanguageModeling(tokenizer, mlm=False)
+
     # Trainer
     trainer = Trainer(
         model=model,
         args=training_args,
         train_dataset=tokenized_dataset,
-        tokenizer=tokenizer
+        processing_class=tokenizer,
+        data_collator=data_collator
     )
 
     trainer.train()
@@ -638,6 +717,79 @@ def fine_tune_model(fine_tuning_data_path, model_name, output_dir, num_epochs=1)
     tokenizer.save_pretrained(output_dir)
 
 
+def fine_tune_model_dpo(fine_tuned_model_dir, dpo_data_path, model_name, output_dir, num_epochs=3):
+    """
+    Fine-tune the model using DPO on the provided dataset.
+    Args:
+        dpo_data_path (str): Path to the DPO fine-tuning dataset.
+        model_name (str): Name or path of the base model.
+        output_dir (str): Directory to save the fine-tuned model.
+    """
+
+    print("Starting DPO fine-tuning process...")
+
+    gc.collect()
+    torch.cuda.empty_cache()
+
+    # Load tokenizer from the policy model directory so it matches
+    tokenizer = AutoTokenizer.from_pretrained(fine_tuned_model_dir)
+    if tokenizer.pad_token is None:
+        tokenizer.pad_token = tokenizer.eos_token
+
+    print("[DPO] Loading SFT model from:", fine_tuned_model_dir)
+    model = AutoModelForCausalLM.from_pretrained(fine_tuned_model_dir)
+
+
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    model.to(device)
+
+    # Save memory by not storing all intermediate activations
+    model.gradient_checkpointing_enable()
+
+    # Training Arguments
+    training_args = DPOConfig(
+        output_dir=output_dir,
+        logging_steps=10,
+        num_train_epochs=num_epochs
+    )
+
+    print("[DPO] Reading DPO data from:", dpo_data_path)
+    with open(dpo_data_path, "r", encoding="utf-8") as f:
+        dpo_json = json.load(f)
+    pairs = dpo_json["pairs"]
+    print(f"[DPO] Found {len(pairs)} pairs in {dpo_data_path}")
+
+    # Convert to HF dataset
+    dataset = Dataset.from_list(pairs)
+
+    # Basic tokenize function
+    def tokenize_fn(ex):
+        prompt_enc   = tokenizer("Question: " + ex["prompt"], truncation=True, max_length=2048)
+        chosen_enc   = tokenizer("Answer: "   + ex["chosen"],  truncation=True, max_length=2048)
+        rejected_enc = tokenizer("Answer: "   + ex["rejected"], truncation=True, max_length=2048)
+
+        return {
+            "prompt_ids":   prompt_enc["input_ids"],
+            "chosen_ids":   chosen_enc["input_ids"],
+            "rejected_ids": rejected_enc["input_ids"]
+        }
+
+    tokenized_dataset = dataset.map(tokenize_fn, batched=False)
+
+
+    # Trainer
+    trainer = DPOTrainer(
+        model=model,
+        args=training_args,
+        train_dataset=tokenized_dataset,
+        processing_class=tokenizer,
+    )
+
+    print("[DPO] Beginning training...")
+    trainer.train()
+    print("[DPO] Finished training. Saving model...")
+    model.save_pretrained(output_dir)
+    tokenizer.save_pretrained(output_dir)
 
 
 def main():
@@ -677,7 +829,7 @@ def main():
     # generations_file = "../smoothie_data/multi_model_results_old/squad/7b/llama-2-7b_train.json"  # Replace with your generations file path
 
     # generations_file_path = Path(generations_file)
-    # output_file = str(generations_file_path.with_name(f"{generations_file_path.stem}_finetuning_v4_{generations_file_path.suffix}"))
+    # output_file = str(generations_file_path.with_name(f"{generations_file_path.stem}_finetuning{generations_file_path.suffix}"))
 
 
     # try:
@@ -686,14 +838,32 @@ def main():
     #     print(f"Error during fine-tuning data preparation: {e}")
 
 
+    # Prepare DPO data
+
+    # input_file = "../smoothie_data/datasets/squad_train.jsonl"  # Replace with your input file path
+    # generations_file = "../smoothie_data/multi_model_results_old/squad/3b/smoothie_sample_dependent_3b_1_train.json"
+    # model_folder = "../smoothie_data/multi_model_results_old/squad/3b"
+
+    # generations_file_path = Path(generations_file)
+    # output_file = str(generations_file_path.with_name(f"{generations_file_path.stem}_dpo{generations_file_path.suffix}"))
+
+    # try:
+    #     prepare_dpo_data(input_file, generations_file, output_file, "3b", model_folder)
+    # except Exception as e:
+    #     print(f"Error during fine-tuning data preparation: {e}")
+
+
+
 
     #model_name = "google/gemma-2b"
     #model_name = "EleutherAI/pythia-2.8b"
     model_name = "EleutherAI/pythia-1b"
     train_dataset_path = "../smoothie_data/datasets/squad_train.jsonl"
     test_dataset_path = "../smoothie_data/datasets/squad_test.jsonl"
-    fine_tuning_data_path = "../smoothie_data/multi_model_results_old/squad/3b/gemma-2b_train_finetuning_v4_.json"
-    output_dir = "../smoothie_data/multi_model_results_old/fine_tuned" 
+    fine_tuning_data_path = "../smoothie_data/multi_model_results_old/squad/7b/llama-2-7b_train_finetuning_v4_.json"
+    dpo_data_path = "../smoothie_data/multi_model_results_old/squad/3b/smoothie_sample_dependent_3b_10_train_dpo.json"
+    fine_tuned_model_dir = f"../smoothie_data/multi_model_results_old/fine_tuned_{model_name}" 
+    dpo_output_dir = f"../smoothie_data/multi_model_results_old/fine_tuned_dpo_{model_name}"
     device = "cuda" if torch.cuda.is_available() else "cpu"
     data_config = load_data_config(argparse.Namespace(dataset_config=DATASET_CONFIG_PATH))
 
@@ -703,30 +873,36 @@ def main():
     base_model.to(device)
 
     # Evaluate on train dataset
-    print("Evaluating on train dataset before fine-tuning...")
+    print("Evaluating on train dataset before fine-tuning...") # should this be evaluating on the test dataset?
     # Evaluate with ROUGE
     train_accuracy = evaluate_model(
-    model=base_model,
-    tokenizer=tokenizer,
-    dataset_path=train_dataset_path,
-    device=device,
-    data_config=data_config,
-    model_name=model_name,
-)
+        model=base_model,
+        tokenizer=tokenizer,
+        dataset_path=train_dataset_path,
+        device=device,
+        data_config=data_config,
+        model_name=model_name,
+    )
   
+    # Fine-tune the model
+    fine_tune_model(fine_tuning_data_path, model_name, fine_tuned_model_dir)
 
-    #Fine-tune the model
-    fine_tune_model(fine_tuning_data_path, model_name, output_dir)
-
+    # Fine-tune the model with DPO
+    # fine_tune_model_dpo(
+    #     fine_tuned_model_dir=fine_tuned_model_dir, 
+    #     dpo_data_path=dpo_data_path, 
+    #     model_name=model_name, 
+    #     output_dir=dpo_output_dir)
 
     # Load the fine-tuned model
     print("Loading fine-tuned model...")
-    fine_tuned_model = AutoModelForCausalLM.from_pretrained(output_dir)
-    fine_tuned_model.to(device)
+    result_model = AutoModelForCausalLM.from_pretrained(fine_tuned_model_dir)
+    #result_model = AutoModelForCausalLM.from_pretrained(dpo_output_dir)
+    result_model.to(device)
 
     # Evaluate on test dataset
     print("Evaluating on test dataset after fine-tuning...")
-    test_accuracy = evaluate_model(fine_tuned_model, tokenizer, test_dataset_path, device, data_config, model_name=model_name)
+    test_accuracy = evaluate_model(result_model, tokenizer, test_dataset_path, device, data_config, model_name=model_name)
 
     print(f"Train Accuracy Before Fine-tuning: {train_accuracy:.2f}%") 
     print(f"Test Accuracy After Fine-tuning: {test_accuracy:.2f}%")
